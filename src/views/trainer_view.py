@@ -24,29 +24,27 @@ class TrainerView(ft.Column):
             on_timeout=self.on_timer_timeout,
         )
 
-        self.note_display = NoteDisplay(on_next_click=self.generate_next_note)
+        self.note_display = NoteDisplay(on_next_click=self.generate_next_note, theme_manager=self.theme_manager)
 
-        # 1. Preset Selector Dropdown
+        # 1. Preset Title & Dropdown
+        self.preset_title = ft.Text("INSTRUMENT SETUP", size=13, weight=ft.FontWeight.BOLD)
         self.preset_dropdown = ft.Dropdown(
             label="Instrument Preset",
-            label_style=ft.TextStyle(color="#C4B5FD"),
             options=[ft.DropdownOption(key=p, text=p) for p in MusicTheory.get_presets()],
             value="Guitar (6-String Standard)",
             expand=True,
-            bgcolor="#1E1A26",
-            border_color="#4E4162",
             focused_border_color=ft.Colors.AMBER_400,
-            color="#EDE7F6",
         )
         self.preset_dropdown.on_change = self.on_preset_change
 
-        # 2. Guitar Knob Controls (String Count & Timer Duration)
+        # 2. Guitar Knob Controls
         self.string_count_knob = GuitarKnob(
             label="Strings",
             min_val=1,
             max_val=8,
             initial_val=6,
             unit="",
+            theme_manager=self.theme_manager,
             on_change=self.on_string_count_knob_change,
         )
 
@@ -56,57 +54,55 @@ class TrainerView(ft.Column):
             max_val=10,
             initial_val=3,
             unit="s",
+            theme_manager=self.theme_manager,
             on_change=self.on_timer_duration_knob_change,
         )
 
         # 3. Auto-Advance Timer Switch
         self.auto_switch = ft.Switch(
             label="Auto-Advance Mode",
-            label_text_style=ft.TextStyle(color="#EDE7F6", weight=ft.FontWeight.W_600),
             value=False,
             active_color=ft.Colors.AMBER_400,
             on_change=self.on_auto_switch_toggle,
         )
 
-        # 4. Scrollable Strings & Tuning Column
+        # 4. Scrollable Strings Column
+        self.tunings_title = ft.Text("ACTIVE STRINGS & TUNING", size=13, weight=ft.FontWeight.BOLD)
         self.strings_column = ft.Column(
             spacing=10,
             scroll=ft.ScrollMode.AUTO,
             height=200,
         )
 
-        # Darker Pastel Section Panels
-        preset_panel = ft.Container(
+        # Theme-aware Panels
+        self.preset_panel = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("INSTRUMENT SETUP", size=13, weight=ft.FontWeight.BOLD, color="#C4B5FD"),
+                    self.preset_title,
                     self.preset_dropdown,
                 ],
                 spacing=12,
             ),
             padding=16,
-            bgcolor="#231F2D",
-            border=ft.Border.all(1, "#3E354A"),
             border_radius=14,
         )
 
-        knobs_panel = ft.Container(
+        self.knobs_panel = ft.Container(
             content=ft.Row(
                 controls=[
                     self.string_count_knob,
-                    ft.VerticalDivider(color="#3E354A", width=1),
                     self.timer_knob,
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_EVENLY,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                wrap=True,
+                run_spacing=12,
             ),
             padding=ft.Padding.symmetric(horizontal=12, vertical=16),
-            bgcolor="#231F2D",
-            border=ft.Border.all(1, "#3E354A"),
             border_radius=14,
         )
 
-        timer_toggle_panel = ft.Container(
+        self.timer_toggle_panel = ft.Container(
             content=ft.Row(
                 controls=[
                     ft.Icon(ft.Icons.TIMER_OUTLINED, color=ft.Colors.AMBER_400, size=22),
@@ -115,41 +111,36 @@ class TrainerView(ft.Column):
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
             padding=ft.Padding.symmetric(horizontal=16, vertical=12),
-            bgcolor="#231F2D",
-            border=ft.Border.all(1, "#3E354A"),
             border_radius=14,
         )
 
-        tunings_panel = ft.Container(
+        self.tunings_panel = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("ACTIVE STRINGS & TUNING", size=13, weight=ft.FontWeight.BOLD, color="#C4B5FD"),
+                    self.tunings_title,
                     self.strings_column,
                 ],
                 spacing=12,
             ),
             padding=16,
-            bgcolor="#231F2D",
-            border=ft.Border.all(1, "#3E354A"),
             border_radius=14,
         )
 
-        # Main Sidebar Wrapper with Spacious Vertical Spacing
-        sidebar_container = ft.Container(
+        self.sidebar_container = ft.Container(
             content=ft.Column(
                 controls=[
-                    preset_panel,
-                    knobs_panel,
-                    timer_toggle_panel,
-                    tunings_panel,
+                    self.preset_panel,
+                    self.knobs_panel,
+                    self.timer_toggle_panel,
+                    self.tunings_panel,
                 ],
-                spacing=18,  # Generous un-crowded spacing between options
+                spacing=16,
+                scroll=ft.ScrollMode.AUTO,
             ),
             padding=18,
-            bgcolor="#1A1721",  # Darker pastel background
             border_radius=18,
-            border=ft.Border.all(1, "#3E354A"),
-            shadow=ft.BoxShadow(blur_radius=20, color=ft.Colors.with_opacity(0.4, "#000000")),
+            shadow=ft.BoxShadow(blur_radius=20, color=ft.Colors.with_opacity(0.3, "#000000")),
+            height=650,
         )
 
         self.controls = [
@@ -158,7 +149,7 @@ class TrainerView(ft.Column):
                 expand=True,
                 controls=[
                     ft.Container(
-                        content=sidebar_container,
+                        content=self.sidebar_container,
                         col={"sm": 12, "md": 5, "lg": 4},
                         padding=10,
                     ),
@@ -174,12 +165,66 @@ class TrainerView(ft.Column):
             )
         ]
 
+        self.theme_manager.add_listener(self.apply_theme)
+        self.apply_theme()
+
     def did_mount(self):
         self.apply_preset("Guitar (6-String Standard)")
+
+    def apply_theme(self):
+        is_dark = self.theme_manager.is_dark()
+
+        bg_sidebar = "#1A1721" if is_dark else "#F3F0F8"
+        bg_panel = "#231F2D" if is_dark else "#FFFFFF"
+        bg_input = "#1E1A26" if is_dark else "#EFEBF5"
+        border_col = "#3E354A" if is_dark else "#D0C8DF"
+        text_primary = "#EDE7F6" if is_dark else "#1C1921"
+        text_secondary = "#C4B5FD" if is_dark else "#5D4B75"
+
+        self.preset_title.color = text_secondary
+        self.tunings_title.color = text_secondary
+
+        self.preset_dropdown.bgcolor = bg_input
+        self.preset_dropdown.border_color = border_col
+        self.preset_dropdown.color = text_primary
+        self.preset_dropdown.label_style = ft.TextStyle(color=text_secondary)
+
+        self.auto_switch.label_text_style = ft.TextStyle(color=text_primary, weight=ft.FontWeight.W_600)
+
+        self.preset_panel.bgcolor = bg_panel
+        self.preset_panel.border = ft.Border.all(1, border_col)
+
+        self.knobs_panel.bgcolor = bg_panel
+        self.knobs_panel.border = ft.Border.all(1, border_col)
+
+        self.timer_toggle_panel.bgcolor = bg_panel
+        self.timer_toggle_panel.border = ft.Border.all(1, border_col)
+
+        self.tunings_panel.bgcolor = bg_panel
+        self.tunings_panel.border = ft.Border.all(1, border_col)
+
+        self.sidebar_container.bgcolor = bg_sidebar
+        self.sidebar_container.border = ft.Border.all(1, border_col)
+
+        for config in self.string_configs:
+            config["checkbox"].label_style = ft.TextStyle(color=text_primary)
+            config["dropdown"].bgcolor = bg_input
+            config["dropdown"].border_color = border_col
+            config["dropdown"].color = text_primary
+            if "row_container" in config:
+                config["row_container"].bgcolor = bg_sidebar
+                config["row_container"].border = ft.Border.all(1, border_col)
 
     def rebuild_string_controls(self, tunings: list[str] = None):
         self.string_configs.clear()
         self.strings_column.controls.clear()
+
+        is_dark = self.theme_manager.is_dark()
+        bg_sidebar = "#1A1721" if is_dark else "#F3F0F8"
+        bg_input = "#1E1A26" if is_dark else "#EFEBF5"
+        border_col = "#3E354A" if is_dark else "#D0C8DF"
+        text_primary = "#EDE7F6" if is_dark else "#1C1921"
+        text_secondary = "#B0A8C0" if is_dark else "#6E6280"
 
         notes = MusicTheory.get_notes()
         for i in range(1, int(self.num_strings) + 1):
@@ -191,54 +236,70 @@ class TrainerView(ft.Column):
                 value=True,
                 label=f"Str {i}",
                 fill_color=ft.Colors.AMBER_400,
-                label_style=ft.TextStyle(color="#EDE7F6"),
+                label_style=ft.TextStyle(color=text_primary),
+                on_change=self.on_string_config_change,
             )
             dd = ft.Dropdown(
                 options=[ft.DropdownOption(key=n, text=n) for n in notes],
                 value=default_tuning,
                 width=80,
                 dense=True,
-                bgcolor="#1E1A26",
-                border_color="#4E4162",
-                color="#EDE7F6",
+                bgcolor=bg_input,
+                border_color=border_col,
+                color=text_primary,
+            )
+            dd.on_change = self.on_string_config_change
+
+            row_cont = ft.Container(
+                content=ft.Row(
+                    controls=[chk, ft.Text("Tuning:", color=text_secondary), dd],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                padding=ft.Padding.symmetric(horizontal=12, vertical=6),
+                bgcolor=bg_sidebar,
+                border_radius=8,
+                border=ft.Border.all(1, border_col),
             )
 
-            config = {"string_num": i, "checkbox": chk, "dropdown": dd}
+            config = {
+                "string_num": i,
+                "checkbox": chk,
+                "dropdown": dd,
+                "row_container": row_cont,
+            }
             self.string_configs.append(config)
-
-            # Styled String Tuning Pill Row
-            self.strings_column.controls.append(
-                ft.Container(
-                    content=ft.Row(
-                        controls=[chk, ft.Text("Tuning:", color="#B0A8C0"), dd],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                    padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-                    bgcolor="#1A1721",
-                    border_radius=8,
-                    border=ft.Border.all(1, "#3E354A"),
-                )
-            )
-
-        if self.page:
-            self.page.update()
+            self.strings_column.controls.append(row_cont)
 
     def on_preset_change(self, e):
+        # Directly access the selected dropdown value string
         preset = self.preset_dropdown.value
-        if preset != "Custom":
+        if preset and preset != "Custom":
             self.apply_preset(preset)
 
     def apply_preset(self, preset_name: str):
+        self.preset_dropdown.value = preset_name
         tunings = MusicTheory.get_preset_tuning(preset_name)
         if tunings:
             self.num_strings = len(tunings)
             self.string_count_knob.set_value(self.num_strings)
             self.rebuild_string_controls(tunings)
+            self.generate_next_note()
+            if self.page:
+                self.page.update()
 
     def on_string_count_knob_change(self, val: int):
         self.num_strings = val
         self.preset_dropdown.value = "Custom"
         self.rebuild_string_controls()
+        self.generate_next_note()
+        if self.page:
+            self.page.update()
+
+    def on_string_config_change(self, e):
+        self.preset_dropdown.value = "Custom"
+        self.generate_next_note()
+        if self.page:
+            self.page.update()
 
     def on_timer_duration_knob_change(self, val: int):
         self.timer.set_duration(val)
