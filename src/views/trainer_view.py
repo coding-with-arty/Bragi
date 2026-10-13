@@ -35,7 +35,9 @@ class TrainerView(ft.Column):
             expand=True,
             focused_border_color=ft.Colors.AMBER_400,
         )
+        # Bind event listeners post-instantiation
         self.preset_dropdown.on_change = self.on_preset_change
+        self.preset_dropdown.on_select = self.on_preset_change
 
         # 2. Guitar Knob Controls
         self.string_count_knob = GuitarKnob(
@@ -271,10 +273,9 @@ class TrainerView(ft.Column):
             self.strings_column.controls.append(row_cont)
 
     def on_preset_change(self, e):
-        # Directly access the selected dropdown value string
-        preset = self.preset_dropdown.value
-        if preset and preset != "Custom":
-            self.apply_preset(preset)
+        preset_name = e.control.value if (e and hasattr(e, "control") and e.control and e.control.value) else self.preset_dropdown.value
+        if preset_name and preset_name != "Custom":
+            self.apply_preset(preset_name)
 
     def apply_preset(self, preset_name: str):
         self.preset_dropdown.value = preset_name
