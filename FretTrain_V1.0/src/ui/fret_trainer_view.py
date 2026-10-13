@@ -66,7 +66,7 @@ class FretTrainerControl(ft.Container):
             border_radius=90,
             bgcolor=ft.Colors.GREY_800,
             border=ft.Border.all(4, ft.Colors.GREY_600),
-            alignment=ft.Alignment.CENTER,  # Updated from ft.alignment.center
+            alignment=ft.Alignment.CENTER,
             animate=ft.Animation(300, ft.AnimationCurve.EASE_IN_OUT),
         )
 

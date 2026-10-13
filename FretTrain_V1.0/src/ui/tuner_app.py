@@ -38,14 +38,13 @@ class TunerControl(ft.Container):
         self.match_badge = ft.Text("Listening...", size=16, color=ft.Colors.GREY)
         self.output_log = ft.Text("Output JSON Statement will appear here...", size=12, selectable=True)
 
-        # Updated ft.ElevatedButton -> ft.Button
         self.string_buttons = ft.Row([
-            ft.Button("E2 (6)", on_click=lambda e: self.set_string_target(6, 0)),
-            ft.Button("A2 (5)", on_click=lambda e: self.set_string_target(5, 0)),
-            ft.Button("D3 (4)", on_click=lambda e: self.set_string_target(4, 0)),
-            ft.Button("G3 (3)", on_click=lambda e: self.set_string_target(3, 0)),
-            ft.Button("B3 (2)", on_click=lambda e: self.set_string_target(2, 0)),
-            ft.Button("E4 (1)", on_click=lambda e: self.set_string_target(1, 0)),
+            ft.Button(content="E2 (6)", on_click=lambda e: self.set_string_target(6, 0)),
+            ft.Button(content="A2 (5)", on_click=lambda e: self.set_string_target(5, 0)),
+            ft.Button(content="D3 (4)", on_click=lambda e: self.set_string_target(4, 0)),
+            ft.Button(content="G3 (3)", on_click=lambda e: self.set_string_target(3, 0)),
+            ft.Button(content="B3 (2)", on_click=lambda e: self.set_string_target(2, 0)),
+            ft.Button(content="E4 (1)", on_click=lambda e: self.set_string_target(1, 0)),
         ], alignment=ft.MainAxisAlignment.CENTER, wrap=True)
 
         self.content = ft.Column([

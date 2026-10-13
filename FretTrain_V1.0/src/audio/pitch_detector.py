@@ -2,7 +2,7 @@
 pitch_detector.py
 =================
 Real-time digital signal processing (DSP) pitch detection background worker
-for fretted instruments (guitar and bass). Includes audio device enumeration[cite: 2].
+for fretted instruments (guitar and bass). Includes audio device enumeration.
 """
 
 import collections
@@ -40,7 +40,7 @@ def list_input_devices() -> List[Dict[str, Any]]:
 
 @dataclass(slots=True)
 class PitchData:
-    """Encapsulates processed pitch detection frame data[cite: 2]."""
+    """Encapsulates processed pitch detection frame data."""
     frequency: float
     note_name: str
     octave: int
@@ -64,7 +64,7 @@ class PitchData:
 
 
 def calculate_db_fs(signal: np.ndarray) -> float:
-    """Calculate Root Mean Square (RMS) energy converted to dB relative to Full Scale (dBFS)[cite: 2]."""
+    """Calculate Root Mean Square (RMS) energy converted to dB relative to Full Scale (dBFS)."""
     rms = np.sqrt(np.mean(np.square(signal)))
     if rms <= 1e-12:
         return -120.0
@@ -74,7 +74,7 @@ def calculate_db_fs(signal: np.ndarray) -> float:
 def freq_to_pitch_info(freq: float) -> tuple[str, int, float]:
     """
     Converts frequency in Hz to closest standard equal-temperament note name,
-    octave number, and cents deviation (-50.0 to +50.0 cents, where A4 = 440 Hz)[cite: 2].
+    octave number, and cents deviation (-50.0 to +50.0 cents, where A4 = 440 Hz).
     """
     if freq <= 0.0:
         return "N/A", 0, 0.0
@@ -89,7 +89,7 @@ def freq_to_pitch_info(freq: float) -> tuple[str, int, float]:
 
 
 class PitchDetector:
-    """Real-time audio pitch detector with dynamic device switching[cite: 2]."""
+    """Real-time audio pitch detector with dynamic device switching."""
 
     def __init__(
         self,
@@ -97,7 +97,7 @@ class PitchDetector:
         buffer_size: int = 2048,
         hop_size: int = 1024,
         silence_threshold_db: float = -45.0,
-        pitch_method: str = "pitchyin",
+        pitch_method: str = "yin",  # Fixed: changed from "pitchyin" to valid "yin"
         confidence_threshold: float = 0.7,
         stability_window: int = 3,
         device: Optional[int | str] = None,
@@ -123,7 +123,7 @@ class PitchDetector:
         )
 
     def _init_aubio(self) -> None:
-        """Initialize Aubio pitch detection instance[cite: 2]."""
+        """Initialize Aubio pitch detection instance."""
         self._pitch_o = aubio.pitch(
             self.pitch_method, self.buffer_size, self.hop_size, self.sample_rate
         )
@@ -142,7 +142,7 @@ class PitchDetector:
     def _audio_callback(
         self, indata: np.ndarray, frames: int, time_info: dict, status: sd.CallbackFlags
     ) -> None:
-        """Low-latency audio stream callback executed on C/audio input thread[cite: 2]."""
+        """Low-latency audio stream callback executed on C/audio input thread."""
         if status:
             logger.warning("SoundDevice status flag: %s", status)
 
@@ -200,7 +200,7 @@ class PitchDetector:
                 pass
 
     def start(self) -> None:
-        """Start capturing audio stream and processing pitch[cite: 2]."""
+        """Start capturing audio stream and processing pitch."""
         if self._is_running:
             return
 
@@ -224,7 +224,7 @@ class PitchDetector:
             raise err
 
     def stop(self) -> None:
-        """Stop audio stream and release DSP resources[cite: 2]."""
+        """Stop audio stream and release DSP resources."""
         if not self._is_running:
             return
 
@@ -238,7 +238,7 @@ class PitchDetector:
         logger.info("Audio stream stopped.")
 
     def get_latest(self, block: bool = False, timeout: Optional[float] = None) -> Optional[PitchData]:
-        """Fetch processed PitchData frame from queue[cite: 2]."""
+        """Fetch processed PitchData frame from queue."""
         try:
             return self.data_queue.get(block=block, timeout=timeout)
         except queue.Empty:

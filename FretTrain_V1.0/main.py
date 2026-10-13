@@ -20,32 +20,37 @@ def main(page: ft.Page):
     tabs = ft.Tabs(
         length=2,
         selected_index=0,
-        animation_duration=300,
-        tab_bar=ft.TabBar(
-            tabs=[
-                ft.Tab(
-                    label="Trainer",
-                    icon=ft.Icons.SCHOOL,
-                ),
-                ft.Tab(
-                    label="Standalone Tuner",
-                    icon=ft.Icons.TUNE,
-                ),
-            ]
-        ),
-        content=ft.TabBarView(
+        content=ft.Column(
+            expand=True,
             controls=[
-                ft.Container(
-                    content=FretTrainerControl(),
-                    padding=20,
-                    alignment=ft.Alignment.CENTER,
+                ft.TabBar(
+                    tabs=[
+                        ft.Tab(
+                            label="Trainer",
+                            icon=ft.Icons.SCHOOL,
+                        ),
+                        ft.Tab(
+                            label="Standalone Tuner",
+                            icon=ft.Icons.TUNE,
+                        ),
+                    ]
                 ),
-                ft.Container(
-                    content=TunerControl(),
-                    padding=20,
-                    alignment=ft.Alignment.CENTER,
+                ft.TabBarView(
+                    expand=True,
+                    controls=[
+                        ft.Container(
+                            content=FretTrainerControl(),
+                            padding=20,
+                            alignment=ft.Alignment.CENTER,
+                        ),
+                        ft.Container(
+                            content=TunerControl(),
+                            padding=20,
+                            alignment=ft.Alignment.CENTER,
+                        ),
+                    ],
                 ),
-            ]
+            ],
         ),
         expand=True,
     )
