@@ -14,6 +14,13 @@ class NoteDisplay(ft.Container):
             color=ft.Colors.with_opacity(0.7, ft.Colors.WHITE),
             weight=ft.FontWeight.W_500
         )
+        self.progress_bar = ft.ProgressBar(
+            value=0.0,
+            width=260,
+            color=ft.Colors.AMBER_400,
+            bgcolor=ft.Colors.with_opacity(0.2, ft.Colors.WHITE),
+            visible=False,
+        )
 
         self.content = ft.Column(
             alignment=ft.MainAxisAlignment.CENTER,
@@ -40,7 +47,9 @@ class NoteDisplay(ft.Container):
                         ]
                     )
                 ),
-                ft.Container(height=24),
+                ft.Container(height=16),
+                self.progress_bar,
+                ft.Container(height=16),
                 ft.Button(
                     content=ft.Row(
                         [
@@ -66,3 +75,9 @@ class NoteDisplay(ft.Container):
         self.string_text.value = f"String {string_num} ({tuning})"
         if self.page:
             self.page.update()
+
+    def update_progress(self, progress: float, visible: bool = True):
+        self.progress_bar.visible = visible
+        self.progress_bar.value = progress
+        if self.progress_bar.page:
+            self.progress_bar.update()
