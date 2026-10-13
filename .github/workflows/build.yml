@@ -1,39 +1,43 @@
-name: Build and Release
+name: Build and Release Flet App
 
 on:
   push:
     tags:
-      - 'v*.*.*'    # Matches tags like v1.0.0, v1.0.1
-      - '*.*.*'     # Matches tags like 1.0.0, 1.0.1
+      - 'v*.*.*'
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Use 'windows-latest' for a .exe, or 'ubuntu-latest' for a Linux binary
+    runs-on: windows-latest
 
     permissions:
-      contents: write # Grants permissions to attach artifacts to GitHub Releases
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Environment
-        # Add your build tool setups here (e.g., Node.js, Python, Rust, Go)
-        uses: actions/setup-node@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '20'
+          python-version: '3.11'
 
-      - name: Build project
+      - name: Install dependencies
         run: |
-          # Replace with your actual build commands
-          npm ci
-          npm run build
+          python -m pip install --upgrade pip
+          pip install flet pyinstaller
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+
+      - name: Package Flet App
+        run: |
+          # Packaging main.py into an executable using flet pack
+          flet pack main.py
 
       - name: Upload Artifact to GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: |
-            path/to/build/output/*
+          generate_release_notes: true
+          files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
