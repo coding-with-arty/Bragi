@@ -1,0 +1,1 @@
+"""Frettrain core application package."""
