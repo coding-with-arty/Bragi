@@ -1,4 +1,3 @@
-# src/utils/theme_manager.py
 import flet as ft
 
 class ThemeManager:

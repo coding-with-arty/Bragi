@@ -1,4 +1,3 @@
-# src/views/trainer_view.py
 import flet as ft
 from components.header import Header
 from components.note_display import NoteDisplay
@@ -6,22 +5,25 @@ from utils.music_theory import MusicTheory
 from utils.theme_manager import ThemeManager
 
 class TrainerView(ft.Column):
-    def __init__(self, page: ft.Page, theme_manager: ThemeManager):
+    def __init__(self, theme_manager: ThemeManager):
         super().__init__()
-        self.page = page
         self.theme_manager = theme_manager
         self.expand = True
         self.num_strings = 6
         self.string_configs = []
         self.note_display = NoteDisplay(on_next_click=self.generate_next_note)
 
+        # 1. Instantiate Dropdown without event kwargs
         self.preset_dropdown = ft.Dropdown(
             label="Instrument Preset",
-            options=[ft.dropdown.Option(p) for p in MusicTheory.get_presets()],
+            options=[ft.DropdownOption(key=p, text=p) for p in MusicTheory.get_presets()],
             value="Guitar (6-String Standard)",
-            on_change=self.on_preset_change,
             expand=True,
         )
+        # 2. Assign event callbacks as attributes post-instantiation
+        self.preset_dropdown.on_change = self.on_preset_change
+        self.preset_dropdown.on_select = self.on_preset_change
+
         self.string_count_slider = ft.Slider(
             min=1,
             max=8,
@@ -31,8 +33,6 @@ class TrainerView(ft.Column):
             on_change=self.on_string_count_change,
         )
         self.strings_column = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, height=220)
-
-        self.apply_preset("Guitar (6-String Standard)")
 
         config_card = ft.Card(
             content=ft.Container(
@@ -53,7 +53,7 @@ class TrainerView(ft.Column):
                     spacing=12,
                 ),
                 padding=16,
-                bgcolor=ft.colors.WITH_OPACITY(0.65, ft.colors.SURFACE),
+                bgcolor=ft.Colors.with_opacity(0.65, ft.Colors.SURFACE),
                 border_radius=12,
             ),
             elevation=4,
@@ -72,7 +72,7 @@ class TrainerView(ft.Column):
                     ft.Container(
                         content=self.note_display,
                         col={"sm": 12, "md": 7, "lg": 8},
-                        alignment=ft.alignment.center,
+                        alignment=ft.Alignment.CENTER,
                         padding=10,
                     ),
                 ],
@@ -80,6 +80,10 @@ class TrainerView(ft.Column):
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
         ]
+
+    def did_mount(self):
+        """Flet automatically invokes did_mount after TrainerView is attached to the page DOM."""
+        self.apply_preset("Guitar (6-String Standard)")
 
     def rebuild_string_controls(self, tunings: list[str] = None):
         self.string_configs.clear()
@@ -93,7 +97,7 @@ class TrainerView(ft.Column):
 
             chk = ft.Checkbox(value=True, label=f"Str {i}")
             dd = ft.Dropdown(
-                options=[ft.dropdown.Option(n) for n in notes],
+                options=[ft.DropdownOption(key=n, text=n) for n in notes],
                 value=default_tuning,
                 width=80,
                 dense=True,
@@ -108,7 +112,9 @@ class TrainerView(ft.Column):
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 )
             )
-        self.update()
+
+        if self.page:
+            self.page.update()
 
     def on_preset_change(self, e):
         preset = self.preset_dropdown.value
