@@ -1,12 +1,25 @@
 """
-music_theory.py - Music theory, tuning presets, and pitch conversion helpers[cite: 5].
+music_theory.py - Music theory, tuning presets, and pitch conversion helpers.
 """
 
 import random
 
-NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+# Included both sharp and flat representations for display and selection
+NOTES = [
+    "C", "C#", "Db", "D", "D#", "Eb", "E", "F",
+    "F#", "Gb", "G", "G#", "Ab", "A", "A#", "Bb", "B"
+]
 
-# Preset string tunings with octave numbers for pitch detection matching
+# Map note names to standard semitone pitch index (0 to 11) for enharmonic lookup
+NOTE_TO_PITCH_INDEX = {
+    "C": 0, "C#": 1, "DB": 1,
+    "D": 2, "D#": 3, "EB": 3,
+    "E": 4, "F": 5, "F#": 6, "GB": 6,
+    "G": 7, "G#": 8, "AB": 8,
+    "A": 9, "A#": 10, "BB": 10,
+    "B": 11
+}
+
 PRESET_TUNINGS = {
     "Guitar (6-String Standard)": [("E", 4), ("B", 3), ("G", 3), ("D", 3), ("A", 2), ("E", 2)],
     "Guitar (7-String Standard)": [("E", 4), ("B", 3), ("G", 3), ("D", 3), ("A", 2), ("E", 2), ("B", 1)],
@@ -35,8 +48,8 @@ class MusicTheory:
     @staticmethod
     def calculate_target_octave(base_note: str, base_octave: int, target_note: str) -> int:
         """Calculates octave for target note relative to base open string tuning."""
-        base_idx = NOTES.index(base_note) if base_note in NOTES else 0
-        target_idx = NOTES.index(target_note) if target_note in NOTES else 0
+        base_idx = NOTE_TO_PITCH_INDEX.get(base_note.upper(), 0)
+        target_idx = NOTE_TO_PITCH_INDEX.get(target_note.upper(), 0)
 
         semitone_diff = target_idx - base_idx
         if semitone_diff < 0:
@@ -47,7 +60,7 @@ class MusicTheory:
     @staticmethod
     def generate_random_note(active_strings: list[dict]) -> tuple[int, str, int, str, int]:
         """
-        Selects a random enabled string and note[cite: 5].
+        Selects a random enabled string and note.
         Returns: (string_num, open_tuning_note, base_octave, target_note, target_octave)
         """
         enabled = [s for s in active_strings if s.get("active", True)]
