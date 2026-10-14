@@ -60,9 +60,9 @@ Master the fretboard in minutes—no terminal wizardry required. Choose your pat
 
 Grab the ready-to-run installer for your OS and jump straight into training.
 
-1. Go to the **[Latest Releases](https://www.google.com/search?q=../../releases)** page.
+1. Go to the **[Latest Releases](https://github.com/coding-with-arty/FretTrain/releases)** page.
 2. Download and run the installer for your operating system:
-* **Windows:** `FretTrain-Setup.exe`
+* **Windows:** `FretTrain-v1.x.x-windows-x64.exe`
 
 ---
 
