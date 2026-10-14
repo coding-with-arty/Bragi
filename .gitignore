@@ -3,3 +3,7 @@ dist/
 *.exe
 *.zip
 *.pkg
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
