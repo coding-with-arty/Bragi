@@ -1,0 +1,177 @@
+PowerShell 7.6.6
+PS C:\Users\arthur.belanger (master)> cd source\FretTrain
+PS C:\Users\arthur.belanger\source\FretTrain (main)> pyinstaller --noconfirm --onedir --windowed --paths src --add-data "assets;assets" main.py
+462 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.8
+462 INFO: Python: 3.14.8
+498 INFO: Platform: Windows-11-10.0.26300-SP0
+498 INFO: Python environment: C:\Program Files\Python314
+500 INFO: wrote C:\Users\arthur.belanger\source\FretTrain\main.spec
+511 INFO: Module search paths (PYTHONPATH):
+['C:\\Program Files\\Python314\\Scripts\\pyinstaller.exe',
+ 'C:\\Program Files\\Python314\\python314.zip',
+ 'C:\\Program Files\\Python314\\DLLs',
+ 'C:\\Program Files\\Python314\\Lib',
+ 'C:\\Program Files\\Python314',
+ 'C:\\Program Files\\Python314\\Lib\\site-packages',
+ 'C:\\Users\\arthur.belanger\\source\\FretTrain',
+ 'C:\\Users\\arthur.belanger\\source\\FretTrain\\src']
+1541 INFO: Appending 'datas' from .spec
+1542 INFO: checking Analysis
+1542 INFO: Building Analysis because Analysis-00.toc is non existent
+1542 INFO: Looking for Python shared library...
+1542 INFO: Using Python shared library: C:\Program Files\Python314\python314.dll
+1542 INFO: Running Analysis Analysis-00.toc
+1542 INFO: Target bytecode optimization level: 0
+1542 INFO: Initializing module dependency graph...
+1545 INFO: Initializing module graph hook caches...
+1730 INFO: Analyzing modules for base_library.zip ...
+4169 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+4698 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+4892 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+5167 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+5190 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+10689 INFO: Caching module dependency graph...
+10738 INFO: Analyzing C:\Users\arthur.belanger\source\FretTrain\main.py
+10787 INFO: Processing standard module hook 'hook-flet.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\flet_cli\\__pyinstaller'
+10946 INFO: Flet client found in cache: C:\Users\arthur.belanger\.flet\client\flet-desktop-full-1.0.4
+12123 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+12307 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+12856 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+12870 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+13984 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+14038 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+14930 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+14934 INFO: SetuptoolsInfo: initializing cached setuptools info...
+18689 INFO: Processing standard module hook 'hook-cryptography.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+20166 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
+21426 INFO: Processing standard module hook 'hook-bcrypt.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+23004 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+23361 INFO: Processing standard module hook 'hook-anyio.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+26831 INFO: Processing standard module hook 'hook-pygments.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+28396 INFO: Processing standard module hook 'hook-chardet.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+30321 INFO: Processing standard module hook 'hook-rich.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+32434 INFO: Processing standard module hook 'hook-IPython.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+34937 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+35531 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+41802 INFO: Processing standard module hook 'hook-psutil.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+42457 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+44693 INFO: Processing standard module hook 'hook-astroid.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+47360 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+48705 INFO: Processing standard module hook 'hook-pytest.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+49556 INFO: Processing standard module hook 'hook-py.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+49840 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+50540 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+50543 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+50558 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+50659 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+50815 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+50818 INFO: Setuptools: 'jaraco' appears to be a partial setuptools-vendored copy - extending search paths to ['C:\\Program Files\\Python314\\Lib\\site-packages\\jaraco', 'C:\\Program Files\\Python314\\Lib\\site-packages\\setuptools\\_vendor\\jaraco']!
+50818 INFO: Processing pre-safe-import-module hook 'hook-jaraco.functools.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+50860 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+51165 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+51901 INFO: Processing pre-safe-import-module hook 'hook-jaraco.text.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+51903 INFO: Setuptools: 'jaraco.text' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco.text'!
+51922 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+51925 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+51927 INFO: Processing pre-safe-import-module hook 'hook-jaraco.context.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+51948 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+51949 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+54926 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+58926 INFO: Processing standard module hook 'hook-wcwidth.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+62874 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+63412 INFO: Processing standard module hook 'hook-jedi.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+66627 INFO: Processing standard module hook 'hook-parso.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+68316 INFO: Processing standard module hook 'hook-docutils.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+70902 INFO: Processing standard module hook 'hook-sphinx.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+82105 INFO: Processing standard module hook 'hook-babel.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+82544 INFO: Processing standard module hook 'hook-pytz.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+82775 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+83483 INFO: Processing standard module hook 'hook-jinja2.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+86801 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+86828 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+86966 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+87934 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+97149 INFO: Processing standard module hook 'hook-black.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+98808 INFO: Processing pre-safe-import-module hook 'hook-platformdirs.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+98842 INFO: Processing standard module hook 'hook-platformdirs.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+99541 INFO: Processing standard module hook 'hook-blib2to3.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+100064 INFO: Processing standard module hook 'hook-pytokens.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+101085 INFO: Processing standard module hook 'hook-yapf_third_party.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+102684 INFO: Processing standard module hook 'hook-nbformat.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+103604 INFO: Processing standard module hook 'hook-jsonschema.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+104366 INFO: Processing standard module hook 'hook-jsonschema_specifications.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+104590 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+108645 INFO: Processing standard module hook 'hook-zmq.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+109537 INFO: Processing standard module hook 'hook-pycparser.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+111154 INFO: Processing standard module hook 'hook-dateutil.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+111491 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+112203 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+112207 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+113345 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+113453 INFO: Processing standard module hook 'hook-PyQt5.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+115314 INFO: Processing standard module hook 'hook-shelve.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+115408 INFO: Processing standard module hook 'hook-cloudpickle.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+118929 INFO: Processing standard module hook 'hook-pydantic.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+124293 INFO: Processing standard module hook 'hook-opentelemetry.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+125697 INFO: Processing standard module hook 'hook-uvicorn.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+126956 INFO: Processing standard module hook 'hook-websockets.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+134607 INFO: Processing standard module hook 'hook-sounddevice.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+134643 INFO: Processing module hooks (post-graph stage)...
+137407 WARNING: Hidden import "pycparser.lextab" not found!
+137407 WARNING: Hidden import "pycparser.yacctab" not found!
+143828 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+143868 INFO: Processing standard module hook 'hook-importlib_metadata.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+144068 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+146924 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+159501 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+159504 INFO: Processing standard module hook 'hook-tzdata.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+160477 INFO: Performing binary vs. data reclassification (8592 entries)
+316582 INFO: Looking for ctypes DLLs
+316745 INFO: Analyzing run-time hooks ...
+316760 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+316785 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+316812 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+316844 INFO: Including run-time hook 'pyi_rth_localhost_fletd.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\flet_cli\\__pyinstaller\\rthooks'
+316868 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+316890 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+316914 INFO: Including run-time hook 'pyi_rth_traitlets.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+316932 INFO: Including run-time hook 'pyi_rth_pyqt5.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+316958 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+316970 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks'
+316987 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Program Files\\Python314\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+317180 INFO: Creating base_library.zip...
+317202 INFO: Looking for dynamic libraries
+0.00s - Debugger warning: It seems that frozen modules are being used, which may
+0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+0.00s - to python to disable frozen modules.
+0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+322123 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Program Files\\Python314\\Lib\\site-packages\\PyQt5\\Qt5\\bin', 'C:\\Program Files\\Python314\\Lib\\site-packages\\numpy.libs']
+322123 INFO: Extra DLL search directories (PATH): ['C:\\Program Files\\Python314\\Lib\\site-packages\\PyQt5\\Qt5\\bin']
+328166 WARNING: Library not found: could not resolve 'jvm.dll', dependency of 'C:\\Users\\arthur.belanger\\.flet\\client\\flet-desktop-full-1.0.4\\flet\\dartjni.dll'.
+328423 INFO: Warnings written to C:\Users\arthur.belanger\source\FretTrain\build\main\warn-main.txt
+328801 INFO: Graph cross-reference written to C:\Users\arthur.belanger\source\FretTrain\build\main\xref-main.html
+329210 INFO: checking PYZ
+329210 INFO: Building PYZ because PYZ-00.toc is non existent
+329210 INFO: Building PYZ (ZlibArchive) C:\Users\arthur.belanger\source\FretTrain\build\main\PYZ-00.pyz
+331668 INFO: Building PYZ (ZlibArchive) C:\Users\arthur.belanger\source\FretTrain\build\main\PYZ-00.pyz completed successfully.
+331736 INFO: checking PKG
+331736 INFO: Building PKG because PKG-00.toc is non existent
+331736 INFO: Building PKG (CArchive) main.pkg
+331816 INFO: Building PKG (CArchive) main.pkg completed successfully.
+331818 INFO: Bootloader C:\Program Files\Python314\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+331818 INFO: checking EXE
+331818 INFO: Building EXE because EXE-00.toc is non existent
+331818 INFO: Building EXE from EXE-00.toc
+331819 INFO: Copying bootloader EXE to C:\Users\arthur.belanger\source\FretTrain\build\main\main.exe
+331986 INFO: Copying icon to EXE
+332098 INFO: Copying 0 resources to EXE
+332098 INFO: Embedding manifest in EXE
+332207 INFO: Appending PKG archive to EXE
+332450 INFO: Fixing EXE headers
+333037 INFO: Building EXE from EXE-00.toc completed successfully.
+333106 INFO: checking COLLECT
+333106 INFO: Building COLLECT because COLLECT-00.toc is non existent
+333107 INFO: Building COLLECT COLLECT-00.toc
+358542 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+358928 INFO: Build complete! The results are available in: C:\Users\arthur.belanger\source\FretTrain\dist
+PS C:\Users\arthur.belanger\source\FretTrain (main)>
