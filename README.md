@@ -50,10 +50,6 @@ FretTrain/
 
 ```
 
----
-
-Here is the updated section with macOS removed and Linux added to the pre-built installer options:
-
 ```markdown
 ## 🚀 Quick Start & Installation
 
