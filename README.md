@@ -52,17 +52,24 @@ FretTrain/
 
 ---
 
+Here is the updated section with macOS removed and Linux added to the pre-built installer options:
+
+```markdown
 ## 🚀 Quick Start & Installation
 
 Master the fretboard in minutes—no terminal wizardry required. Choose your path below:
 
+---
+
 ### 🎛️ Option 1: Fast Track (Recommended for Players)
 
-Grab the ready-to-run installer for your OS and jump straight into training.
+Grab the ready-to-run installer or binary for your OS and jump straight into training.
 
-1. Go to the **[Latest Releases](https://github.com/coding-with-arty/FretTrain/releases)** page.
-2. Download and run the installer for your operating system:
-* **Windows:** `FretTrain-v1.x.x-windows-x64.exe`
+1. Go to the **[Latest Releases](../../releases)** page.
+2. Download and run the file for your operating system:
+   * **Windows:** Download and run `FretTrain-Setup.exe`
+   * **Linux:** Download `FretTrain.AppImage`, make it executable (`chmod +x FretTrain.AppImage`), and run!
+3. Launch `FretTrain` and start plugging in!
 
 ---
 
@@ -71,13 +78,12 @@ Grab the ready-to-run installer for your OS and jump straight into training.
 Want to tweak the DSP, contribute code, or build new features? Spin up the source in an isolated virtual environment:
 
 #### Prerequisites
-
 * **Python**: 3.10 or higher
-* **PortAudio**: Audio backend library (installed automatically via `sounddevice` on most platforms).
+* **PortAudio**: Audio backend library (installed automatically via `sounddevice` on Windows; install via package manager on Linux, e.g., `sudo apt install portaudio19-dev`).
 
 ```bash
 # 1. Clone the repo & enter project directory
-git clone https://github.com/your-username/FretTrain.git
+git clone [https://github.com/your-username/FretTrain.git](https://github.com/your-username/FretTrain.git)
 cd FretTrain
 
 # 2. Set up virtual environment
@@ -85,7 +91,7 @@ cd FretTrain
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 
-# macOS / Linux:
+# Linux:
 python3 -m venv venv
 source venv/bin/activate
 
@@ -94,6 +100,27 @@ pip install -r requirements.txt
 python main.py
 
 ```
+
+---
+
+### ⚡ Troubleshooting & Tips
+
+* **Windows Execution Policy:** If PowerShell blocks script activation, run:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+
+```
+
+
+* **Linux Permissions:** If using the AppImage, make sure execution permissions are granted:
+```bash
+chmod +x FretTrain.AppImage
+
+```
+
+
+* **Audio Drivers:** For lowest latency while training, ensure your primary audio interface driver (ASIO/WASAPI on Windows or ALSA/PulseAudio/PIPEWIRE on Linux) is selected in settings.
+
 
 ---
 
