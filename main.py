@@ -1,49 +1,73 @@
 """
 main.py
 =======
-Main application entry point for Frettrain with background asset rendering.
+Application entry point for FretTrain.
+Configures page layout, top-level tab navigation, and theme initialization.
 """
 
-import sys
-from pathlib import Path
-
-# Determine runtime root directory
-if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-    ROOT_DIR = Path(sys._MEIPASS)
-else:
-    ROOT_DIR = Path(__file__).resolve().parent
-
-SRC_DIR = ROOT_DIR / "src"
-
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
-
 import flet as ft
+from storage.progress_repository import ProgressRepository
 from utils.theme_manager import ThemeManager
 from views.trainer_view import TrainerView
+from views.subviews.ear_training_view import EarTrainingView
+from views.subviews.progress_view import ProgressView
 
 
 def main(page: ft.Page):
-    page.title = "FretTrain - Guitar & Bass Note Trainer"
+    page.title = "FretTrain - Fretboard & Chord Trainer"
+    page.padding = 12
     page.theme_mode = ft.ThemeMode.DARK
-    page.padding = 0  # Edge-to-edge full window layout for background
-    page.spacing = 0
 
+    # Global state managers & storage
     theme_manager = ThemeManager(page)
+    repository = ProgressRepository()
 
-    bg_container = ft.Container(
+    # Views
+    trainer_view = TrainerView(theme_manager=theme_manager)
+    ear_training_view = EarTrainingView(theme_manager=theme_manager)
+    progress_view = ProgressView(repository=repository, theme_manager=theme_manager)
+
+    # Modern Tab navigation layout using TabBar & TabBarView
+    tabs = ft.Tabs(
+        length=3,
+        selected_index=0,
         expand=True,
-        padding=10,
-        image=ft.DecorationImage(
-            src="bg.png",
-            fit=ft.BoxFit.COVER,  # Corrected to ft.BoxFit.COVER
+        content=ft.Column(
+            expand=True,
+            controls=[
+                ft.TabBar(
+                    tabs=[
+                        ft.Tab(
+                            label="Fretboard Trainer",
+                            icon=ft.Icons.MUSIC_NOTE_OUTLINED,
+                        ),
+                        ft.Tab(
+                            label="Ear Training",
+                            icon=ft.Icons.GRAPHIC_EQ,
+                        ),
+                        ft.Tab(
+                            label="Analytics & History",
+                            icon=ft.Icons.ANALYTICS_OUTLINED,
+                        ),
+                    ]
+                ),
+                ft.TabBarView(
+                    expand=True,
+                    controls=[
+                        trainer_view,
+                        ear_training_view,
+                        progress_view,
+                    ],
+                ),
+            ],
         ),
-        content=TrainerView(theme_manager),
     )
 
-    page.add(bg_container)
+    page.add(tabs)
 
 
 if __name__ == "__main__":
-    assets_dir = ROOT_DIR / "assets"
-    ft.run(main, assets_dir=str(assets_dir))
+    if hasattr(ft, "run"):
+        ft.run(main)
+    else:
+        ft.app(target=main)

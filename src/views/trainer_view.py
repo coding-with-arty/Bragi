@@ -1,27 +1,36 @@
 """
-trainer_view.py
-===============
-Trainer View integrating Fretboard prompts, timer, custom knobs, and audio pitch matching.
-Updated for latest Flet API signatures (on_select event on Dropdowns).
+src/views/trainer_view.py
+=========================
+Primary trainer view integrating instrument controls, microphone setup, timer engine,
+filter panel, and dual note/chord target visualizers.
 """
 
 import asyncio
 import time
+from typing import Optional, Set
 import flet as ft
 
-from components.header import Header
-from components.note_display import NoteDisplay
-from components.guitar_knob import GuitarKnob
+from views.components.header import Header
+from views.components.note_display import NoteDisplay
+from views.components.chord_display import ChordDisplay
+from views.components.filter_panel import FilterPanel
+from views.components.guitar_knob import GuitarKnob
+
+from models.settings import TrainerSettings, DetectionMode, PracticeMode
+from models.chord import TargetChord, ChordMatchStatement
+from engine.note_evaluator import SingleNoteMatchStatement, EvaluatedPitchPayload
+from engine.chord_generator import ChordGenerator
+
 from utils.music_theory import MusicTheory
 from utils.theme_manager import ThemeManager
-from utils.timer_manager import TrainerTimer, PracticeMode
+from utils.timer_manager import TrainerTimer
 
 from audio.pitch_detector import PitchDetector, list_input_devices
-from audio.audio_worker import AudioWorker, AudioWorkerConfig, ToneMatchStatement, PitchDataPayload
+from audio.audio_worker import AudioWorker
 
 
 class TrainerView(ft.Column):
-    """Main view component combining instrument controls, pitch matching, and timer engine."""
+    """Main application trainer view supporting single note and chord modes."""
 
     def __init__(self, theme_manager: ThemeManager):
         super().__init__()
@@ -31,34 +40,46 @@ class TrainerView(ft.Column):
         self.string_configs = []
         self._is_transitioning = False
 
-        # --- Audio Engine Setup ---
+        self.settings = TrainerSettings()
+
+        # Audio Engine Setup
         self.detector = PitchDetector()
         self.worker = AudioWorker(
             pitch_detector=self.detector,
-            config=AudioWorkerConfig(tolerance_cents=25.0, hold_duration_sec=0.30),
-            on_pitch_update=self._on_pitch_update,
+            settings=self.settings,
+            on_pitch_update=self._on_note_pitch_update,
             on_note_matched=self._on_note_matched,
+            on_chord_matched=self._on_chord_matched,
+            on_chord_pitch_update=self._on_chord_pitch_update,
         )
 
-        # --- Practice Timer Setup ---
+        # Timer Setup
         self.timer = TrainerTimer(
-            duration=3.0,
+            duration=self.settings.timer_duration_sec,
             mode=PracticeMode.SPEED_FLASHCARD,
             tick_interval=0.05,
             on_tick=self.on_timer_tick,
             on_timeout=self.on_timer_timeout,
         )
 
-        self.note_display = NoteDisplay(on_next_click=self.generate_next_note, theme_manager=self.theme_manager)
+        # Visualizers
+        self.note_display = NoteDisplay(
+            on_next_click=self.generate_next_target,
+            theme_manager=self.theme_manager
+        )
+        self.chord_display = ChordDisplay(
+            on_next_click=self.generate_next_target,
+            theme_manager=self.theme_manager
+        )
+        self.chord_display.visible = False
 
-        # 1. Preset & Mic Selection
+        # Sidebar Controls
         self.preset_title = ft.Text("INSTRUMENT & MIC SETUP", size=13, weight=ft.FontWeight.BOLD)
         self.preset_dropdown = ft.Dropdown(
             label="Instrument Preset",
             options=[ft.DropdownOption(key=p, text=p) for p in MusicTheory.get_presets()],
             value="Guitar (6-String Standard)",
             expand=True,
-            focused_border_color=ft.Colors.AMBER_400,
             on_select=self.on_preset_change,
         )
 
@@ -66,11 +87,9 @@ class TrainerView(ft.Column):
             label="Microphone",
             options=[],
             expand=True,
-            focused_border_color=ft.Colors.AMBER_400,
             on_select=self.on_mic_selected,
         )
 
-        # 2. Guitar Knob Controls
         self.string_count_knob = GuitarKnob(
             label="Strings",
             min_val=1,
@@ -91,9 +110,8 @@ class TrainerView(ft.Column):
             on_change=self.on_timer_duration_knob_change,
         )
 
-        # 3. Audio & Timer Toggle Controls
         self.audio_switch = ft.Switch(
-            label="Microphone Pitch Verification",
+            label="Microphone Audio Verification",
             value=True,
             active_color=ft.Colors.GREEN_ACCENT,
             on_change=self.on_audio_switch_toggle,
@@ -106,15 +124,12 @@ class TrainerView(ft.Column):
             on_change=self.on_auto_switch_toggle,
         )
 
-        # 4. Scrollable Strings Column
-        self.tunings_title = ft.Text("ACTIVE STRINGS & TUNING", size=13, weight=ft.FontWeight.BOLD)
-        self.strings_column = ft.Column(
-            spacing=10,
-            scroll=ft.ScrollMode.AUTO,
-            height=180,
+        self.filter_panel = FilterPanel(
+            settings=self.settings,
+            on_settings_changed=self.on_settings_changed,
+            theme_manager=self.theme_manager
         )
 
-        # Layout Panels
         self.preset_panel = ft.Container(
             content=ft.Column(
                 controls=[
@@ -155,25 +170,13 @@ class TrainerView(ft.Column):
             border_radius=14,
         )
 
-        self.tunings_panel = ft.Container(
-            content=ft.Column(
-                controls=[
-                    self.tunings_title,
-                    self.strings_column,
-                ],
-                spacing=12,
-            ),
-            padding=16,
-            border_radius=14,
-        )
-
         self.sidebar_container = ft.Container(
             content=ft.Column(
                 controls=[
                     self.preset_panel,
                     self.knobs_panel,
                     self.timer_toggle_panel,
-                    self.tunings_panel,
+                    self.filter_panel,
                 ],
                 spacing=16,
                 scroll=ft.ScrollMode.AUTO,
@@ -182,6 +185,19 @@ class TrainerView(ft.Column):
             border_radius=18,
             shadow=ft.BoxShadow(blur_radius=20, color=ft.Colors.with_opacity(0.3, "#000000")),
             height=650,
+        )
+
+        self.display_container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    self.note_display,
+                    self.chord_display,
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER
+            ),
+            alignment=ft.Alignment.CENTER,
+            padding=10,
         )
 
         self.controls = [
@@ -195,7 +211,7 @@ class TrainerView(ft.Column):
                         padding=10,
                     ),
                     ft.Container(
-                        content=self.note_display,
+                        content=self.display_container,
                         col={"sm": 12, "md": 7, "lg": 8},
                         alignment=ft.Alignment.CENTER,
                         padding=10,
@@ -210,8 +226,8 @@ class TrainerView(ft.Column):
         self.apply_theme()
 
     def did_mount(self):
-        self.populate_microphones()
-        self.apply_preset("Guitar (6-String Standard)")
+        self.populate_microphones(update_page=False)
+        self.apply_preset("Guitar (6-String Standard)", update_page=False)
         if self.audio_switch.value:
             self.detector.start()
             self.worker.start()
@@ -220,8 +236,8 @@ class TrainerView(ft.Column):
         self.worker.stop()
         self.detector.stop()
 
-    def populate_microphones(self):
-        """Populates the clean, deduplicated microphone list."""
+    def populate_microphones(self, update_page: bool = True):
+        """Populates microphone device dropdown."""
         mics = list_input_devices()
         options = [
             ft.DropdownOption(
@@ -234,15 +250,16 @@ class TrainerView(ft.Column):
         if mics:
             self.mic_dropdown.value = "default"
             self.worker.set_input_device(None)
-        self.update()
+        if update_page and self.page:
+            self.page.update()
 
     def on_mic_selected(self, e):
-        """Handles user selecting a device from the filtered dropdown."""
         val = self.mic_dropdown.value
         device_id = int(val) if val and val != "default" else None
         self.worker.set_input_device(device_id)
 
     def apply_theme(self):
+        """Applies color scheme styles across UI containers."""
         is_dark = self.theme_manager.is_dark()
 
         bg_sidebar = "#1A1721" if is_dark else "#F3F0F8"
@@ -253,17 +270,12 @@ class TrainerView(ft.Column):
         text_secondary = "#C4B5FD" if is_dark else "#5D4B75"
 
         self.preset_title.color = text_secondary
-        self.tunings_title.color = text_secondary
 
         self.preset_dropdown.bgcolor = bg_input
-        self.preset_dropdown.border_color = border_col
         self.preset_dropdown.color = text_primary
-        self.preset_dropdown.label_style = ft.TextStyle(color=text_secondary)
 
         self.mic_dropdown.bgcolor = bg_input
-        self.mic_dropdown.border_color = border_col
         self.mic_dropdown.color = text_primary
-        self.mic_dropdown.label_style = ft.TextStyle(color=text_secondary)
 
         self.preset_panel.bgcolor = bg_panel
         self.preset_panel.border = ft.Border.all(1, border_col)
@@ -274,96 +286,43 @@ class TrainerView(ft.Column):
         self.timer_toggle_panel.bgcolor = bg_panel
         self.timer_toggle_panel.border = ft.Border.all(1, border_col)
 
-        self.tunings_panel.bgcolor = bg_panel
-        self.tunings_panel.border = ft.Border.all(1, border_col)
-
         self.sidebar_container.bgcolor = bg_sidebar
         self.sidebar_container.border = ft.Border.all(1, border_col)
-
-    def rebuild_string_controls(self, tunings: list[tuple[str, int]] = None):
-        self.string_configs.clear()
-        self.strings_column.controls.clear()
-
-        is_dark = self.theme_manager.is_dark()
-        bg_sidebar = "#1A1721" if is_dark else "#F3F0F8"
-        bg_input = "#1E1A26" if is_dark else "#EFEBF5"
-        border_col = "#3E354A" if is_dark else "#D0C8DF"
-        text_primary = "#EDE7F6" if is_dark else "#1C1921"
-        text_secondary = "#B0A8C0" if is_dark else "#6E6280"
-
-        notes = MusicTheory.get_notes()
-        for i in range(1, int(self.num_strings) + 1):
-            default_note = "E"
-            default_octave = 2
-            if tunings and (i - 1) < len(tunings):
-                default_note, default_octave = tunings[i - 1]
-
-            chk = ft.Checkbox(
-                value=True,
-                label=f"Str {i}",
-                fill_color=ft.Colors.AMBER_400,
-                label_style=ft.TextStyle(color=text_primary),
-                on_change=self.on_string_config_change,
-            )
-            dd = ft.Dropdown(
-                options=[ft.DropdownOption(key=n, text=n) for n in notes],
-                value=default_note,
-                width=80,
-                dense=True,
-                bgcolor=bg_input,
-                border_color=border_col,
-                color=text_primary,
-                on_select=self.on_string_config_change,  # Updated on_change -> on_select
-            )
-
-            row_cont = ft.Container(
-                content=ft.Row(
-                    controls=[chk, ft.Text("Tuning:", color=text_secondary), dd],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                ),
-                padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-                bgcolor=bg_sidebar,
-                border_radius=8,
-                border=ft.Border.all(1, border_col),
-            )
-
-            config = {
-                "string_num": i,
-                "checkbox": chk,
-                "dropdown": dd,
-                "octave": default_octave,
-                "row_container": row_cont,
-            }
-            self.string_configs.append(config)
-            self.strings_column.controls.append(row_cont)
 
     def on_preset_change(self, e):
         preset_name = self.preset_dropdown.value
         if preset_name and preset_name != "Custom":
             self.apply_preset(preset_name)
 
-    def apply_preset(self, preset_name: str):
+    def apply_preset(self, preset_name: str, update_page: bool = True):
         self.preset_dropdown.value = preset_name
         tunings = MusicTheory.get_preset_tuning(preset_name)
         if tunings:
             self.num_strings = len(tunings)
-            self.string_count_knob.set_value(self.num_strings)
-            self.rebuild_string_controls(tunings)
-            self.generate_next_note()
-            if self.page:
+            self.string_count_knob.set_value(self.num_strings, update_page=False)
+            self.generate_next_target(update_page=False)
+            if update_page and self.page:
                 self.page.update()
+
+    def on_settings_changed(self, new_settings: TrainerSettings):
+        self.settings = new_settings
+        self.worker.update_settings(self.settings)
+
+        if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
+            self.note_display.visible = True
+            self.chord_display.visible = False
+        else:
+            self.note_display.visible = False
+            self.chord_display.visible = True
+
+        self.generate_next_target()
+        if self.page:
+            self.page.update()
 
     def on_string_count_knob_change(self, val: int):
         self.num_strings = val
         self.preset_dropdown.value = "Custom"
-        self.rebuild_string_controls()
-        self.generate_next_note()
-        if self.page:
-            self.page.update()
-
-    def on_string_config_change(self, e):
-        self.preset_dropdown.value = "Custom"
-        self.generate_next_note()
+        self.generate_next_target()
         if self.page:
             self.page.update()
 
@@ -380,44 +339,57 @@ class TrainerView(ft.Column):
 
     def on_auto_switch_toggle(self, e):
         if self.auto_switch.value:
-            self.note_display.update_progress(0.0, visible=True)
-            if self.note_display.note_text.value != "?":
-                asyncio.create_task(self.timer.start(self.timer_knob.value))
+            if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
+                self.note_display.update_progress(0.0, visible=True)
+            else:
+                self.chord_display.update_progress(0.0, visible=True)
+            asyncio.create_task(self.timer.start(self.timer_knob.value))
         else:
             asyncio.create_task(self.timer.reset())
             self.note_display.update_progress(0.0, visible=False)
+            self.chord_display.update_progress(0.0, visible=False)
 
     def on_timer_tick(self, elapsed: float, remaining: float, progress: float):
         if self.auto_switch.value:
-            self.note_display.update_progress(progress, visible=True)
+            if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
+                self.note_display.update_progress(progress, visible=True)
+            else:
+                self.chord_display.update_progress(progress, visible=True)
 
     def on_timer_timeout(self):
-        self.generate_next_note()
+        self.generate_next_target()
 
-    def generate_next_note(self):
+    def generate_next_target(self, update_page: bool = True):
         self._is_transitioning = False
-        active_strings = [
-            {
-                "string_num": c["string_num"],
-                "tuning": c["dropdown"].value,
-                "octave": c.get("octave", 2),
-                "active": c["checkbox"].value,
-            }
-            for c in self.string_configs
-        ]
-        string_num, base_tuning, base_octave, target_note, target_octave = MusicTheory.generate_random_note(active_strings)
 
-        self.note_display.set_target(string_num, base_tuning, target_note)
-        self.worker.set_target_note(target_note, octave=target_octave)
+        if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
+            active_strings = [
+                {"string_num": i, "tuning": "E", "octave": 2, "active": True}
+                for i in range(1, int(self.num_strings) + 1)
+            ]
+            string_num, base_tuning, base_octave, target_note, target_octave = MusicTheory.generate_random_note(active_strings)
+            self.note_display.set_target(string_num, base_tuning, target_note)
+            self.worker.set_target_note(target_note, octave=target_octave)
+        else:
+            target_chord = ChordGenerator.generate_target(self.settings.chord_filters)
+            self.chord_display.set_target_chord(target_chord)
+            self.worker.set_target_chord(target_chord)
 
         if self.auto_switch.value:
             asyncio.create_task(self.timer.start(self.timer_knob.value))
 
-    def _on_pitch_update(self, data: PitchDataPayload):
-        if not self._is_transitioning and self.audio_switch.value:
+        if update_page and self.page:
+            self.page.update()
+
+    def _on_note_pitch_update(self, data: EvaluatedPitchPayload):
+        if not self._is_transitioning and self.audio_switch.value and self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
             self.note_display.update_pitch_feedback(data.raw_pitch_str, data.cents, data.is_in_tune)
 
-    def _on_note_matched(self, statement: ToneMatchStatement):
+    def _on_chord_pitch_update(self, detected_pcs: Set[int], volume_db: float):
+        if not self._is_transitioning and self.audio_switch.value and self.settings.detection_mode == DetectionMode.CHORD_DETECTION:
+            self.chord_display.render_pitch_badges(detected_pcs)
+
+    def _on_note_matched(self, statement: SingleNoteMatchStatement):
         if self._is_transitioning or not statement.is_correct or not self.audio_switch.value:
             return
 
@@ -425,7 +397,21 @@ class TrainerView(ft.Column):
 
         def delayed_advance():
             time.sleep(0.5)
-            self.generate_next_note()
+            self.generate_next_target()
+
+        if self.page:
+            self.page.run_thread(delayed_advance)
+
+    def _on_chord_matched(self, statement: ChordMatchStatement):
+        if self._is_transitioning or not statement.is_correct or not self.audio_switch.value:
+            return
+
+        self._is_transitioning = True
+        self.chord_display.update_pitch_feedback(statement.detected_pitch_classes, is_correct=True)
+
+        def delayed_advance():
+            time.sleep(0.6)
+            self.generate_next_target()
 
         if self.page:
             self.page.run_thread(delayed_advance)
