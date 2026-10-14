@@ -26,7 +26,7 @@ class NoteDisplay(ft.Container):
 
         self.audio_feedback_text = ft.Text(
             "",
-            size=16,
+            size=18,
             color=ft.Colors.GREY_400,
         )
 

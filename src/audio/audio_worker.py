@@ -12,9 +12,14 @@ import threading
 import time
 from typing import Callable, Optional, Tuple, Any, Dict
 
-CHROMATIC_NOTES: list[str] = [
-    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
-]
+ENHARMONIC_PITCH_MAP: dict[str, int] = {
+    "C": 0, "C#": 1, "DB": 1,
+    "D": 2, "D#": 3, "EB": 3,
+    "E": 4, "F": 5, "F#": 6, "GB": 6,
+    "G": 7, "G#": 8, "AB": 8,
+    "A": 9, "A#": 10, "BB": 10,
+    "B": 11
+}
 
 
 class MatchState(Enum):
@@ -29,9 +34,10 @@ class TargetNote:
     octave: Optional[int] = None
 
     def __post_init__(self) -> None:
-        formatted = self.note_name.strip().upper()
-        if formatted not in CHROMATIC_NOTES:
+        raw = self.note_name.strip()
+        if raw.upper() not in ENHARMONIC_PITCH_MAP:
             raise ValueError(f"Invalid note name '{self.note_name}'.")
+        formatted = raw[0].upper() + raw[1:] if len(raw) > 1 else raw.upper()
         object.__setattr__(self, 'note_name', formatted)
 
     @property
@@ -213,7 +219,9 @@ class AudioWorker:
             is_above_noise = vol >= config.min_volume_db
             is_note_match = False
             if target is not None:
-                name_match = (detected_note == target.note_name)
+                target_pitch = ENHARMONIC_PITCH_MAP.get(target.note_name.upper())
+                detected_pitch = ENHARMONIC_PITCH_MAP.get(detected_note.upper())
+                name_match = (target_pitch is not None and target_pitch == detected_pitch)
                 octave_match = (not config.require_octave_match) or (octave == target.octave)
                 is_note_match = name_match and octave_match
 
