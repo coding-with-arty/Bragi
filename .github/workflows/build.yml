@@ -17,50 +17,75 @@ jobs:
         include:
           - os: windows-latest
             asset_name: FretTrain-Windows.zip
-            add_data_sep: ";"
           - os: macos-latest
             asset_name: FretTrain-macOS.zip
-            add_data_sep: ":"
           - os: ubuntu-latest
             asset_name: FretTrain-Linux.tar.gz
-            add_data_sep: ":"
 
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install Linux Audio Dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev portaudio19-dev
-      - name: Install Python Dependencies
+
+      - name: Install Dependencies (Windows)
+        if: runner.os == 'Windows'
         run: |
           python -m pip install --upgrade pip
           pip install flet pyinstaller
           if (Test-Path requirements.txt) { pip install -r requirements.txt }
         shell: pwsh
-      - name: Build Executable with PyInstaller
+
+      - name: Install Dependencies (macOS / Linux)
+        if: runner.os != 'Windows'
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name FretTrain --paths src --add-data "assets${{ matrix.add_data_sep }}assets" main.py
+          python -m pip install --upgrade pip
+          pip install flet pyinstaller
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        shell: bash
+
+      - name: Build Executable (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconfirm --onedir --windowed --name FretTrain --paths src --add-data "assets;assets" main.py
         shell: pwsh
+
+      - name: Build Executable (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          pyinstaller --noconfirm --onedir --windowed --name FretTrain --paths src --add-data "assets:assets" main.py
+        shell: bash
+
       - name: Compress Release (Windows)
         if: runner.os == 'Windows'
         run: Compress-Archive -Path dist/FretTrain/* -DestinationPath dist/${{ matrix.asset_name }}
         shell: pwsh
+
       - name: Compress Release (macOS)
         if: runner.os == 'macOS'
         run: |
           cd dist
-          zip -r ${{ matrix.asset_name }} FretTrain.app FretTrain 2>/dev/null || zip -r ${{ matrix.asset_name }} FretTrain
+          if [ -d "FretTrain.app" ]; then
+            zip -r ${{ matrix.asset_name }} FretTrain.app
+          else
+            zip -r ${{ matrix.asset_name }} FretTrain
+          fi
         shell: bash
+
       - name: Compress Release (Linux)
         if: runner.os == 'Linux'
         run: |
           cd dist
           tar -czvf ${{ matrix.asset_name }} FretTrain
         shell: bash
+
       - name: Upload Desktop Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
@@ -91,11 +116,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Flutter SDK
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-
       - name: Install Flet
         run: |
           python -m pip install --upgrade pip
@@ -103,13 +123,15 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Build Android APK
-        run: flet build apk
+        run: flet build apk --yes
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           generate_release_notes: true
-          files: build/apk/*.apk
+          files: |
+            build/apk/*.apk
+            dist/apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
