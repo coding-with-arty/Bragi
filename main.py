@@ -7,8 +7,12 @@ Main application entry point for Frettrain with background asset rendering.
 import sys
 from pathlib import Path
 
-# Add src directory dynamically to sys.path
-ROOT_DIR = Path(__file__).resolve().parent
+# Determine runtime root directory
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    ROOT_DIR = Path(sys._MEIPASS)
+else:
+    ROOT_DIR = Path(__file__).resolve().parent
+
 SRC_DIR = ROOT_DIR / "src"
 
 if str(SRC_DIR) not in sys.path:
