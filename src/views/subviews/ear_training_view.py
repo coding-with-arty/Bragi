@@ -1,19 +1,18 @@
-"""
-src/views/subviews/ear_training_view.py
-========================================
-Ear training subview for chord and interval pitch recognition.
-"""
-
-from typing import Optional, Set
+# src/views/subviews/ear_training_view.py
+from typing import Optional
 import flet as ft
 from utils.audio_synth import AudioSynth
 from utils.theme_manager import ThemeManager
-from engine.chord_generator import ChordGenerator
-from models.settings import ChordFilterSettings, ChordQuality
+from models.ear_training import (
+    EarTrainingCategory,
+    EarTrainingDifficulty,
+    EarTrainingQuestion,
+)
+from engine.ear_training_generator import EarTrainingGenerator
 
 
 class EarTrainingView(ft.Column):
-    """Ear training view for audio pitch and chord recognition practice."""
+    """Ear Training Subview for note, interval, and chord recognition practice."""
 
     def __init__(self, theme_manager: Optional[ThemeManager] = None):
         super().__init__()
@@ -21,18 +20,44 @@ class EarTrainingView(ft.Column):
         self.expand = True
         self.audio_synth = AudioSynth()
 
-        self.current_pitch_classes: Set[int] = set()
-        self.current_chord_name: str = ""
+        self.current_question: Optional[EarTrainingQuestion] = None
+        self.streak_count: int = 0
+        self.total_answered: int = 0
+        self.correct_answered: int = 0
 
-        # UI Components
-        self.title_text = ft.Text("EAR TRAINING PRACTICE", size=22, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400)
-        self.feedback_text = ft.Text("Listen to the chord and select your answer", size=16, color=ft.Colors.GREY_400)
+        # UI Header Elements
+        self.title_text = ft.Text("EAR TRAINING MODULE", size=22, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400)
+        self.score_text = ft.Text("Score: 0/0 | Streak: 0 🔥", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_300)
 
+        # Controls Header Row
+        self.category_dropdown = ft.Dropdown(
+            label="Category",
+            options=[ft.DropdownOption(key=cat.value, text=cat.value) for cat in EarTrainingCategory],
+            value=EarTrainingCategory.CHORD_QUALITY.value,
+            width=240,
+            dense=True,
+            on_select=self._on_category_or_difficulty_changed,
+        )
+
+        self.difficulty_dropdown = ft.Dropdown(
+            label="Difficulty",
+            options=[ft.DropdownOption(key=d.value, text=d.value) for d in EarTrainingDifficulty],
+            value=EarTrainingDifficulty.BEGINNER.value,
+            width=160,
+            dense=True,
+            on_select=self._on_category_or_difficulty_changed,
+        )
+
+        # Question & Feedback Labels
+        self.prompt_text = ft.Text("Listen and choose your answer", size=16, weight=ft.FontWeight.BOLD)
+        self.feedback_text = ft.Text("", size=15, weight=ft.FontWeight.W_500)
+
+        # Audio Replay Button
         self.play_button = ft.Button(
             content=ft.Row(
                 [
                     ft.Icon(ft.Icons.VOLUME_UP_ROUNDED, size=24),
-                    ft.Text("Play Audio Chord", size=16, weight=ft.FontWeight.BOLD)
+                    ft.Text("Replay Audio", size=16, weight=ft.FontWeight.BOLD)
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 tight=True,
@@ -43,14 +68,14 @@ class EarTrainingView(ft.Column):
                 color=ft.Colors.BLACK,
                 bgcolor=ft.Colors.AMBER_400,
             ),
-            on_click=self._play_current_chord,
+            on_click=self._replay_audio,
         )
 
         self.next_button = ft.Button(
-            content=ft.Text("Next Question", size=16, weight=ft.FontWeight.BOLD),
+            content=ft.Text("Next Question", size=15, weight=ft.FontWeight.BOLD),
             style=ft.ButtonStyle(
                 shape=ft.RoundedRectangleBorder(radius=20),
-                padding=ft.Padding.symmetric(horizontal=24, vertical=16),
+                padding=ft.Padding.symmetric(horizontal=20, vertical=14),
             ),
             on_click=lambda e: self.generate_new_question(),
         )
@@ -63,12 +88,28 @@ class EarTrainingView(ft.Column):
         )
 
         self.controls = [
-            ft.Container(content=self.title_text, padding=16),
+            ft.Container(
+                content=ft.Row(
+                    controls=[self.title_text, self.score_text],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                padding=16,
+            ),
+            ft.Container(
+                content=ft.Row(
+                    controls=[self.category_dropdown, self.difficulty_dropdown],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=12,
+                ),
+                padding=ft.Padding.symmetric(horizontal=16, vertical=8),
+            ),
             ft.Container(
                 content=ft.Column(
                     controls=[
+                        self.prompt_text,
+                        ft.Container(height=12),
                         self.play_button,
-                        ft.Container(height=16),
+                        ft.Container(height=12),
                         self.feedback_text,
                         ft.Container(height=16),
                         self.options_row,
@@ -78,7 +119,7 @@ class EarTrainingView(ft.Column):
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     alignment=ft.MainAxisAlignment.CENTER,
                 ),
-                padding=24,
+                padding=20,
                 alignment=ft.Alignment.CENTER,
             )
         ]
@@ -86,57 +127,74 @@ class EarTrainingView(ft.Column):
     def did_mount(self):
         self.generate_new_question()
 
+    def _on_category_or_difficulty_changed(self, e) -> None:
+        self.generate_new_question()
+
     def generate_new_question(self) -> None:
-        """Generates a new chord question and updates option choices."""
-        filters = ChordFilterSettings(qualities={ChordQuality.MAJOR, ChordQuality.MINOR})
-        target = ChordGenerator.generate_target(filters)
+        """Generates a question payload and triggers audio playback."""
+        cat = EarTrainingCategory(self.category_dropdown.value)
+        diff = EarTrainingDifficulty(self.difficulty_dropdown.value)
 
-        self.current_pitch_classes = target.chord_definition.pitch_classes
-        self.current_chord_name = target.chord_definition.name
-        self.feedback_text.value = "Listen and select the chord name"
-        self.feedback_text.color = ft.Colors.GREY_400
+        q = EarTrainingGenerator.generate_question(cat, diff)
+        self.current_question = q
 
-        # Extract root note directly from chord name (e.g., "C Major" -> "C")
-        root_note = self.current_chord_name.split()[0] if self.current_chord_name else "C"
+        self.prompt_text.value = q.prompt_text
+        self.feedback_text.value = ""
 
-        # Create multiple choice distractors
-        qualities = ["Major", "Minor", "7th", "Maj7"]
-        choices = {self.current_chord_name}
-
-        for q in qualities:
-            candidate = f"{root_note} {q}"
-            choices.add(candidate)
-            if len(choices) >= 4:
-                break
-
-        choice_list = sorted(list(choices))
-
+        # Construct answer option buttons
         self.options_row.controls = [
             ft.Button(
-                content=ft.Text(choice, size=16, weight=ft.FontWeight.BOLD),
+                content=ft.Text(choice, size=15, weight=ft.FontWeight.BOLD),
                 style=ft.ButtonStyle(
                     padding=ft.Padding.symmetric(horizontal=20, vertical=14),
                 ),
                 on_click=lambda e, name=choice: self._check_answer(name),
             )
-            for choice in choice_list
+            for choice in q.options
         ]
 
-        self.audio_synth.play_chord_async(self.current_pitch_classes)
+        self._replay_audio()
         if self.page:
             self.page.update()
 
-    def _play_current_chord(self, e) -> None:
-        if self.current_pitch_classes:
-            self.audio_synth.play_chord_async(self.current_pitch_classes)
+    def _replay_audio(self, e=None) -> None:
+        """Triggers audio synth output for the active question payload."""
+        q = self.current_question
+        if not q:
+            return
+
+        if q.category == EarTrainingCategory.SINGLE_NOTE:
+            pc = list(q.pitch_classes)[0] if q.pitch_classes else 0
+            self.audio_synth.play_note_async(pc, q.octave)
+        elif q.category == EarTrainingCategory.INTERVAL:
+            pcs = sorted(list(q.pitch_classes))
+            if len(pcs) >= 2:
+                pc1, pc2 = pcs[0], pcs[1]
+                oct2 = q.second_note_octave or q.octave
+                self.audio_synth.play_interval_async(pc1, q.octave, pc2, oct2, q.interval_mode.value)
+            elif len(pcs) == 1:
+                self.audio_synth.play_note_async(pcs[0], q.octave)
+        else:
+            self.audio_synth.play_chord_async(q.pitch_classes, q.octave)
 
     def _check_answer(self, selected_name: str) -> None:
-        if selected_name == self.current_chord_name:
-            self.feedback_text.value = f"CORRECT! It's {self.current_chord_name}"
+        q = self.current_question
+        if not q:
+            return
+
+        self.total_answered += 1
+
+        if selected_name == q.correct_answer:
+            self.correct_answered += 1
+            self.streak_count += 1
+            self.feedback_text.value = f"CORRECT! 🎉 {q.explanation}"
             self.feedback_text.color = ft.Colors.GREEN_400
         else:
-            self.feedback_text.value = f"INCORRECT. Expected: {self.current_chord_name}"
+            self.streak_count = 0
+            self.feedback_text.value = f"INCORRECT. Correct Answer: {q.correct_answer}. {q.explanation}"
             self.feedback_text.color = ft.Colors.RED_400
+
+        self.score_text.value = f"Score: {self.correct_answered}/{self.total_answered} | Streak: {self.streak_count} 🔥"
 
         if self.page:
             self.page.update()

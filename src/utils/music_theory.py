@@ -20,6 +20,26 @@ NOTE_TO_PITCH_INDEX: Dict[str, int] = {
     "B": 11
 }
 
+# Musical Interval Semitone Distances
+INTERVAL_SEMITONES: Dict[str, int] = {
+    "P1": 0,   # Perfect Unison / Root
+    "m2": 1,   # Minor 2nd
+    "M2": 2,   # Major 2nd
+    "m3": 3,   # Minor 3rd
+    "M3": 4,   # Major 3rd
+    "P4": 5,   # Perfect 4th
+    "d5": 6,   # Diminished 5th / Tritone
+    "P5": 7,   # Perfect 5th
+    "A5": 8,   # Augmented 5th
+    "m6": 8,   # Minor 6th
+    "M6": 9,   # Major 6th
+    "d7": 9,   # Diminished 7th
+    "m7": 10,  # Minor 7th
+    "M7": 11,  # Major 7th
+    "P8": 12,  # Octave
+    "M9": 14,  # Major 9th
+}
+
 A440_HZ: float = 440.0
 
 CHORD_FORMULAS: Dict[ChordQuality, List[int]] = {
