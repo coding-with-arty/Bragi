@@ -1,10 +1,4 @@
-"""
-src/views/trainer_view.py
-=========================
-Primary trainer view integrating instrument controls, microphone setup, timer engine,
-filter panel, and dual note/chord target visualizers.
-"""
-
+# src/views/trainer_view.py
 import asyncio
 import time
 from typing import Optional, Set
@@ -15,6 +9,7 @@ from views.components.note_display import NoteDisplay
 from views.components.chord_display import ChordDisplay
 from views.components.filter_panel import FilterPanel
 from views.components.guitar_knob import GuitarKnob
+from views.components.tuning_panel import TuningPanel
 
 from models.settings import TrainerSettings, DetectionMode, PracticeMode
 from models.chord import TargetChord, ChordMatchStatement
@@ -36,11 +31,13 @@ class TrainerView(ft.Column):
         super().__init__()
         self.theme_manager = theme_manager
         self.expand = True
-        self.num_strings = 6
-        self.string_configs = []
         self._is_transitioning = False
 
         self.settings = TrainerSettings()
+
+        # Base Tuning State
+        self.current_tuning = MusicTheory.get_preset_tuning("Guitar (6-String Standard)")
+        self.num_strings = len(self.current_tuning)
 
         # Audio Engine Setup
         self.detector = PitchDetector()
@@ -74,7 +71,8 @@ class TrainerView(ft.Column):
         self.chord_display.visible = False
 
         # Sidebar Controls
-        self.preset_title = ft.Text("INSTRUMENT & MIC SETUP", size=13, weight=ft.FontWeight.BOLD)
+        self.preset_title = ft.Text("INSTRUMENT SETUP", size=13, weight=ft.FontWeight.BOLD)
+
         self.preset_dropdown = ft.Dropdown(
             label="Instrument Preset",
             options=[ft.DropdownOption(key=p, text=p) for p in MusicTheory.get_presets()],
@@ -90,11 +88,26 @@ class TrainerView(ft.Column):
             on_select=self.on_mic_selected,
         )
 
+        # New Modular Custom Tuning Panel
+        self.tuning_panel = TuningPanel(
+            initial_tuning=self.current_tuning,
+            on_tuning_changed=self.on_custom_tuning_changed
+        )
+
+        self.tuning_expansion = ft.ExpansionTile(
+            title=ft.Text("Custom Tuning Settings", size=14, weight=ft.FontWeight.BOLD),
+            subtitle=ft.Text("Edit individual string pitches", size=12),
+            controls=[ft.Container(content=self.tuning_panel, padding=10)],
+            collapsed_text_color=ft.Colors.GREY_400,
+            text_color=ft.Colors.AMBER_400,
+            maintain_state=True
+        )
+
         self.string_count_knob = GuitarKnob(
             label="Strings",
             min_val=1,
             max_val=8,
-            initial_val=6,
+            initial_val=self.num_strings,
             unit="",
             theme_manager=self.theme_manager,
             on_change=self.on_string_count_knob_change,
@@ -136,6 +149,7 @@ class TrainerView(ft.Column):
                     self.preset_title,
                     self.preset_dropdown,
                     self.mic_dropdown,
+                    self.tuning_expansion,
                 ],
                 spacing=12,
             ),
@@ -237,7 +251,6 @@ class TrainerView(ft.Column):
         self.detector.stop()
 
     def populate_microphones(self, update_page: bool = True):
-        """Populates microphone device dropdown."""
         mics = list_input_devices()
         options = [
             ft.DropdownOption(
@@ -259,7 +272,6 @@ class TrainerView(ft.Column):
         self.worker.set_input_device(device_id)
 
     def apply_theme(self):
-        """Applies color scheme styles across UI containers."""
         is_dark = self.theme_manager.is_dark()
 
         bg_sidebar = "#1A1721" if is_dark else "#F3F0F8"
@@ -270,19 +282,15 @@ class TrainerView(ft.Column):
         text_secondary = "#C4B5FD" if is_dark else "#5D4B75"
 
         self.preset_title.color = text_secondary
-
         self.preset_dropdown.bgcolor = bg_input
         self.preset_dropdown.color = text_primary
-
         self.mic_dropdown.bgcolor = bg_input
         self.mic_dropdown.color = text_primary
 
         self.preset_panel.bgcolor = bg_panel
         self.preset_panel.border = ft.Border.all(1, border_col)
-
         self.knobs_panel.bgcolor = bg_panel
         self.knobs_panel.border = ft.Border.all(1, border_col)
-
         self.timer_toggle_panel.bgcolor = bg_panel
         self.timer_toggle_panel.border = ft.Border.all(1, border_col)
 
@@ -299,10 +307,38 @@ class TrainerView(ft.Column):
         tunings = MusicTheory.get_preset_tuning(preset_name)
         if tunings:
             self.num_strings = len(tunings)
+            self.current_tuning = list(tunings)  # Apply exact preset tuning array
             self.string_count_knob.set_value(self.num_strings, update_page=False)
+
+            if hasattr(self, 'tuning_panel'):
+                self.tuning_panel.update_tuning_externally(self.current_tuning)
+
             self.generate_next_target(update_page=False)
             if update_page and self.page:
                 self.page.update()
+
+    def on_string_count_knob_change(self, val: int):
+        self.num_strings = val
+        self.preset_dropdown.value = "Custom"
+
+        # Pad or truncate the tuning list cleanly to match the knob val
+        while len(self.current_tuning) < self.num_strings:
+            self.current_tuning.append(("E", 2))
+        if len(self.current_tuning) > self.num_strings:
+            self.current_tuning = self.current_tuning[:self.num_strings]
+
+        self.tuning_panel.update_tuning_externally(self.current_tuning)
+        self.generate_next_target()
+
+        if self.page:
+            self.page.update()
+
+    def on_custom_tuning_changed(self, new_tuning: list):
+        self.current_tuning = new_tuning
+        self.preset_dropdown.value = "Custom"
+        self.generate_next_target()
+        if self.page:
+            self.page.update()
 
     def on_settings_changed(self, new_settings: TrainerSettings):
         self.settings = new_settings
@@ -315,13 +351,6 @@ class TrainerView(ft.Column):
             self.note_display.visible = False
             self.chord_display.visible = True
 
-        self.generate_next_target()
-        if self.page:
-            self.page.update()
-
-    def on_string_count_knob_change(self, val: int):
-        self.num_strings = val
-        self.preset_dropdown.value = "Custom"
         self.generate_next_target()
         if self.page:
             self.page.update()
@@ -363,10 +392,21 @@ class TrainerView(ft.Column):
         self._is_transitioning = False
 
         if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
-            active_strings = [
-                {"string_num": i, "tuning": "E", "octave": 2, "active": True}
-                for i in range(1, int(self.num_strings) + 1)
-            ]
+            # FIX: Build active strings list using actual dynamic custom tuning
+            active_strings = []
+            for i in range(self.num_strings):
+                if i < len(self.current_tuning):
+                    note, oct = self.current_tuning[i]
+                else:
+                    note, oct = ("E", 2)
+
+                active_strings.append({
+                    "string_num": i + 1,
+                    "tuning": note,
+                    "octave": oct,
+                    "active": True
+                })
+
             string_num, base_tuning, base_octave, target_note, target_octave = MusicTheory.generate_random_note(active_strings)
             self.note_display.set_target(string_num, base_tuning, target_note)
             self.worker.set_target_note(target_note, octave=target_octave)

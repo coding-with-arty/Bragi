@@ -163,13 +163,13 @@ class AudioWorker:
             except Exception as err:
                 sys.stderr.write(f"[AudioWorker] Note match callback error: {err}\n")
 
+    # src/audio/audio_worker.py
     def _process_chord_mode(self) -> None:
-        """Executes chord processing step supporting arpeggio accumulation and polyphonic CQT."""
         if not hasattr(self._pitch_detector, "get_latest"):
             return
 
         pdata = self._pitch_detector.get_latest(block=False)
-        if pdata is None:
+        if pdata is None or pdata.raw_signal is None:
             return
 
         vol_db = pdata.db_level
@@ -178,21 +178,18 @@ class AudioWorker:
         detected_pcs: Set[int] = set()
 
         if self._settings.validation_mode == ValidationMode.ARPEGGIO_SEQUENCE:
-            # Accumulate picked pitches over time
+            # Retain existing arpeggiator logic using the monophonic tracker
             if vol_db >= min_vol and pdata.note_name != "N/A":
                 from utils.music_theory import NOTE_TO_PITCH_INDEX
                 pc = NOTE_TO_PITCH_INDEX.get(pdata.note_name.upper())
                 if pc is not None:
                     self.arpeggio_buffer.add_pitch_class(pc)
-
             detected_pcs = self.arpeggio_buffer.get_active_pitch_classes()
         else:
-            # Polyphonic single-frame evaluation
-            if vol_db >= min_vol and pdata.note_name != "N/A":
-                from utils.music_theory import NOTE_TO_PITCH_INDEX
-                pc = NOTE_TO_PITCH_INDEX.get(pdata.note_name.upper())
-                if pc is not None:
-                    detected_pcs.add(pc)
+            # FIX: Use the polyphonic DSP engine for single-frame chord evaluation
+            active_pcs, _, is_silent, _ = self.chord_detector.process_frame(pdata.raw_signal)
+            if not is_silent and vol_db >= min_vol:
+                detected_pcs = active_pcs
 
         if self._on_chord_pitch_update:
             try:

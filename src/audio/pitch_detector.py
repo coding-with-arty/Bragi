@@ -92,6 +92,7 @@ class PitchData:
     is_silent: bool
     is_stable: bool
     confidence: float
+    raw_signal: np.ndarray = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -220,6 +221,7 @@ class PitchDetector:
             is_silent=is_silent,
             is_stable=is_stable,
             confidence=confidence,
+            raw_signal=signal.copy()
         )
 
         if self.external_callback is not None:
