@@ -3,6 +3,7 @@ dist/
 *.exe
 *.zip
 *.pkg
+*.vscode
 __pycache__/
 *.py[cod]
 .pytest_cache/
