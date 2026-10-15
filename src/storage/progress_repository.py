@@ -1,19 +1,13 @@
-"""
-src/storage/progress_repository.py
-===================================
-SQLite persistence repository for user exercise attempt history and analytical metrics.
-"""
-
+# src/storage/progress_repository.py
 import sqlite3
-from pathlib import Path
-from typing import List, Optional
 import time
-
-from models.progress import AttemptRecord, ChordStatSummary, SessionProgress
+from pathlib import Path
+from typing import List, Optional, Tuple
+from models.progress import AttemptRecord, ChordStatSummary, PitchStatSummary, UserProfile, Achievement
 
 
 class ProgressRepository:
-    """Manages SQLite database storage for exercise attempt logs and analytics."""
+    """Manages SQLite database storage for exercise attempt logs, analytics, user profile, and achievements."""
 
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
@@ -45,10 +39,64 @@ class ProgressRepository:
                     timestamp REAL NOT NULL
                 )
             """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_profile (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    current_xp INTEGER DEFAULT 0,
+                    current_level INTEGER DEFAULT 1,
+                    current_streak INTEGER DEFAULT 0,
+                    last_practice_day TEXT DEFAULT '',
+                    created_at REAL NOT NULL
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS achievements (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    icon_name TEXT NOT NULL,
+                    unlocked INTEGER DEFAULT 0,
+                    unlocked_at REAL
+                )
+            """)
+
+            cursor.execute("SELECT COUNT(*) FROM user_profile WHERE id = 1")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO user_profile (id, current_xp, current_level, current_streak, last_practice_day, created_at)
+                    VALUES (1, 0, 1, 0, '', ?)
+                """, (time.time(),))
+
+            conn.commit()
+
+    def get_profile(self) -> UserProfile:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT current_xp, current_level, current_streak, last_practice_day, created_at FROM user_profile WHERE id = 1")
+            row = cursor.fetchone()
+            if row:
+                return UserProfile(
+                    current_xp=row["current_xp"],
+                    current_level=row["current_level"],
+                    current_streak=row["current_streak"],
+                    last_practice_day=row["last_practice_day"] or "",
+                    created_at=row["created_at"]
+                )
+            return UserProfile()
+
+    def save_profile(self, profile: UserProfile) -> None:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE user_profile
+                SET current_xp = ?, current_level = ?, current_streak = ?, last_practice_day = ?
+                WHERE id = 1
+            """, (profile.current_xp, profile.current_level, profile.current_streak, profile.last_practice_day))
             conn.commit()
 
     def log_attempt(self, record: AttemptRecord) -> None:
-        """Saves a new AttemptRecord to SQLite."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -66,7 +114,6 @@ class ProgressRepository:
             conn.commit()
 
     def get_recent_attempts(self, limit: int = 50) -> List[AttemptRecord]:
-        """Retrieves recent attempt records."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -76,7 +123,6 @@ class ProgressRepository:
                 LIMIT ?
             """, (limit,))
             rows = cursor.fetchall()
-
             return [
                 AttemptRecord(
                     target_name=row["target_name"],
@@ -89,36 +135,72 @@ class ProgressRepository:
                 for row in rows
             ]
 
-    def get_chord_summaries(self) -> List[ChordStatSummary]:
-        """Calculates performance statistics grouped by chord target."""
+    def get_pitch_accuracies(self) -> Tuple[List[PitchStatSummary], List[PitchStatSummary]]:
+        """Calculates performance statistics grouped by note name and splits into strongest and weakest notes."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT
                     target_name,
                     COUNT(*) as total_attempts,
-                    SUM(is_success) as total_success,
-                    AVG(CASE WHEN is_success = 1 THEN response_time_sec END) as avg_latency
+                    SUM(is_success) as total_success
                 FROM attempt_records
-                WHERE target_type = 'chord'
+                WHERE target_type = 'note'
                 GROUP BY target_name
-                ORDER BY total_attempts DESC
+                HAVING total_attempts >= 3
+                ORDER BY (CAST(SUM(is_success) AS REAL) / COUNT(*)) DESC
             """)
             rows = cursor.fetchall()
 
-            summaries = []
+            all_stats = []
             for row in rows:
                 attempts = row["total_attempts"]
                 successes = row["total_success"] or 0
-                avg_time = row["avg_latency"] or 0.0
-                accuracy = (successes / attempts * 100.0) if attempts > 0 else 0.0
-
-                summaries.append(ChordStatSummary(
-                    chord_name=row["target_name"],
+                acc = (successes / attempts * 100.0) if attempts > 0 else 0.0
+                all_stats.append(PitchStatSummary(
+                    note_name=row["target_name"],
                     attempts_count=attempts,
                     success_count=successes,
-                    average_response_time_sec=round(avg_time, 2),
-                    accuracy_percentage=round(accuracy, 1)
+                    accuracy_percentage=round(acc, 1)
                 ))
 
-            return summaries
+            strongest = all_stats[:3]
+            weakest = sorted(all_stats, key=lambda x: x.accuracy_percentage)[:3] if len(all_stats) > 3 else []
+            return strongest, weakest
+
+    def get_achievements(self) -> List[Achievement]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, title, description, icon_name, unlocked, unlocked_at FROM achievements")
+            rows = cursor.fetchall()
+            return [
+                Achievement(
+                    id=row["id"],
+                    title=row["title"],
+                    description=row["description"],
+                    icon_name=row["icon_name"],
+                    unlocked=bool(row["unlocked"]),
+                    unlocked_at=row["unlocked_at"]
+                )
+                for row in rows
+            ]
+
+    def unlock_achievement(self, achievement_id: str) -> None:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE achievements
+                SET unlocked = 1, unlocked_at = ?
+                WHERE id = ? AND unlocked = 0
+            """, (time.time(), achievement_id))
+            conn.commit()
+
+    def sync_default_achievements(self, defaults: List[Achievement]) -> None:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            for ach in defaults:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO achievements (id, title, description, icon_name, unlocked, unlocked_at)
+                    VALUES (?, ?, ?, ?, 0, NULL)
+                """, (ach.id, ach.title, ach.description, ach.icon_name))
+            conn.commit()

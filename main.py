@@ -2,36 +2,30 @@
 import sys
 from pathlib import Path
 
-# Adjust import paths
-project_root = Path(__file__).resolve().parent
-src_path = project_root / "src"
-
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-if src_path.exists() and str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
+# Ensure src directory is on the Python module search path
+sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import flet as ft
 from app_layout import AppLayout
+from storage.progress_repository import ProgressRepository
+from utils.theme_manager import ThemeManager
 
 
 def main(page: ft.Page):
-    page.title = "FretTrain - Fretboard & Polyphonic Chord Trainer"
-    page.padding = 12
+    page.title = "FretSense - Fretboard & Ear Trainer"
     page.theme_mode = ft.ThemeMode.DARK
+    page.padding = 0
+    page.spacing = 0
 
-    layout = AppLayout(page)
+    theme_manager = ThemeManager(page)
+    repository = ProgressRepository()
+
+    layout = AppLayout(page=page, theme_manager=theme_manager, repository=repository)
     page.add(layout)
-
-    def window_event(e):
-        if e.data == "close":
-            layout.clean_up()
-            page.window.destroy()
-
-    page.window.on_event = window_event
 
 
 if __name__ == "__main__":
+    # ft.run() replaces ft.app() in modern Flet
     if hasattr(ft, "run"):
         ft.run(main)
     else:

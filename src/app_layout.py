@@ -1,84 +1,111 @@
 # src/app_layout.py
-"""
-src/app_layout.py
-=================
-Main application navigation scaffold managing Material Design 3 tab routing,
-theme state synchronization, and audio worker lifecycle teardown.
-"""
-
+from typing import Optional
 import flet as ft
-from storage.progress_repository import ProgressRepository
+from utils.responsive import ResponsiveLayout, DeviceType
 from utils.theme_manager import ThemeManager
+from storage.progress_repository import ProgressRepository
 from views.trainer_view import TrainerView
 from views.subviews.ear_training_view import EarTrainingView
 from views.subviews.progress_view import ProgressView
 
 
 class AppLayout(ft.Container):
-    """Encapsulates top-level tab views, theme state, and child view instances."""
+    """Cross-platform responsive application shell with adaptive navigation."""
 
-    def __init__(self, app_page: ft.Page):
+    def __init__(
+        self,
+        page: ft.Page,
+        theme_manager: Optional[ThemeManager] = None,
+        repository: Optional[ProgressRepository] = None,
+    ):
         super().__init__()
-        self.app_page = app_page
+        self.main_page = page
+        self.theme_manager = theme_manager or ThemeManager(page)
+        self.repository = repository or ProgressRepository()
         self.expand = True
 
-        # Core State & Repositories
-        self.theme_manager = ThemeManager(self.app_page)
-        self.repository = ProgressRepository()
-
-        # Instantiate Primary Views
+        # Instantiate Main Application Views
         self.trainer_view = TrainerView(theme_manager=self.theme_manager)
         self.ear_training_view = EarTrainingView(theme_manager=self.theme_manager)
         self.progress_view = ProgressView(
-            repository=self.repository,
-            theme_manager=self.theme_manager
+            repository=self.repository, theme_manager=self.theme_manager
         )
 
-        # Build Navigation UI
-        self.tabs = ft.Tabs(
-            length=3,
-            selected_index=0,
-            expand=True,
-            on_change=self._on_tab_changed,
-            content=ft.Column(
-                expand=True,
+        self.views = [self.trainer_view, self.ear_training_view, self.progress_view]
+        self.current_index = 0
+
+        # Viewport Resize Listener
+        self.main_page.on_resized = self._on_viewport_resized
+
+        # Mobile Bottom Navigation Bar
+        self.bottom_nav = ft.NavigationBar(
+            selected_index=self.current_index,
+            destinations=[
+                ft.NavigationBarDestination(icon=ft.Icons.TUNE_ROUNDED, label="Trainer"),
+                ft.NavigationBarDestination(icon=ft.Icons.HEARING_ROUNDED, label="Ear Training"),
+                ft.NavigationBarDestination(icon=ft.Icons.BAR_CHART_ROUNDED, label="Analytics"),
+            ],
+            on_change=self._on_navigation_changed,
+        )
+
+        # Tablet/Desktop Side Navigation Rail
+        self.side_rail = ft.NavigationRail(
+            selected_index=self.current_index,
+            label_type=ft.NavigationRailLabelType.ALL,
+            min_width=72,
+            min_extended_width=160,
+            destinations=[
+                ft.NavigationRailDestination(icon=ft.Icons.TUNE_ROUNDED, label="Trainer"),
+                ft.NavigationRailDestination(icon=ft.Icons.HEARING_ROUNDED, label="Ear Training"),
+                ft.NavigationRailDestination(icon=ft.Icons.BAR_CHART_ROUNDED, label="Analytics"),
+            ],
+            on_change=self._on_navigation_changed,
+        )
+
+        self.body_container = ft.Container(content=self.views[self.current_index], expand=True)
+        self._build_responsive_layout()
+
+    def _build_responsive_layout(self) -> None:
+        device = ResponsiveLayout.get_device_type(self.main_page)
+
+        if device == DeviceType.MOBILE:
+            self.content = ft.Column(
                 controls=[
-                    ft.TabBar(
-                        tabs=[
-                            ft.Tab(
-                                label="Fretboard Trainer",
-                                icon=ft.Icons.MUSIC_NOTE_OUTLINED,
-                            ),
-                            ft.Tab(
-                                label="Ear Training",
-                                icon=ft.Icons.GRAPHIC_EQ,
-                            ),
-                            ft.Tab(
-                                label="Analytics & History",
-                                icon=ft.Icons.ANALYTICS_OUTLINED,
-                            ),
-                        ]
-                    ),
-                    ft.TabBarView(
-                        expand=True,
-                        controls=[
-                            self.trainer_view,
-                            self.ear_training_view,
-                            self.progress_view,
-                        ],
-                    ),
+                    self.body_container,
+                    self.bottom_nav,
                 ],
-            ),
-        )
+                expand=True,
+                spacing=0,
+            )
+        else:
+            self.content = ft.Row(
+                controls=[
+                    self.side_rail,
+                    ft.VerticalDivider(width=1, color="#3E354A"),
+                    self.body_container,
+                ],
+                expand=True,
+                spacing=0,
+            )
 
-        self.content = self.tabs
+        if hasattr(self.trainer_view, "adapt_layout"):
+            self.trainer_view.adapt_layout()
 
-    def _on_tab_changed(self, e):
-        """Triggers data refreshes when navigating to specific subviews."""
-        if self.tabs.selected_index == 2:
+    def _on_navigation_changed(self, e) -> None:
+        idx = int(e.control.selected_index)
+        self.current_index = idx
+        self.bottom_nav.selected_index = idx
+        self.side_rail.selected_index = idx
+
+        self.body_container.content = self.views[self.current_index]
+
+        # Mount selected view to DOM first
+        self.main_page.update()
+
+        # Safely trigger view refresh once mounted
+        if self.current_index == 2 and hasattr(self.progress_view, "refresh_stats"):
             self.progress_view.refresh_stats()
 
-    def clean_up(self):
-        """Safely terminates audio DSP threads upon window closure or app exit."""
-        if hasattr(self.trainer_view, "will_unmount"):
-            self.trainer_view.will_unmount()
+    def _on_viewport_resized(self, e) -> None:
+        self._build_responsive_layout()
+        self.main_page.update()
