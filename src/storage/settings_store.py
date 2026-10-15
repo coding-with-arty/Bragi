@@ -15,7 +15,7 @@ class SettingsStore:
 
     def __init__(self, storage_path: Optional[Path] = None):
         if storage_path is None:
-            config_dir = Path.home() / ".frettrain"
+            config_dir = Path.home() / ".FretSense"
             config_dir.mkdir(parents=True, exist_ok=True)
             self.storage_file = config_dir / "settings.json"
         else:

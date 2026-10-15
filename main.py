@@ -1,7 +1,7 @@
 """
 main.py
 =======
-Application entry point for FretTrain.
+Application entry point for FretSense.
 Configures page layout, top-level tab navigation, and theme initialization.
 """
 
@@ -14,7 +14,7 @@ from views.subviews.progress_view import ProgressView
 
 
 def main(page: ft.Page):
-    page.title = "FretTrain - Fretboard & Chord Trainer"
+    page.title = "FretSense - Fretboard & Chord Trainer"
     page.padding = 12
     page.theme_mode = ft.ThemeMode.DARK
 

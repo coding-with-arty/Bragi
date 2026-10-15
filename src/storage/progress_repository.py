@@ -17,7 +17,7 @@ class ProgressRepository:
 
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
-            data_dir = Path.home() / ".frettrain"
+            data_dir = Path.home() / ".FretSense"
             data_dir.mkdir(parents=True, exist_ok=True)
             self.db_file = data_dir / "user_progress.db"
         else:

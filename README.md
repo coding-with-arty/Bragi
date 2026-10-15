@@ -1,33 +1,32 @@
-# FretTrain 🎸
+# FretSense 🎸
 
 > **Real-Time Guitar, Bass & Ukulele Fretboard Trainer powered by Python, Flet, and Aubio DSP**
 
-**FretTrain** is a high-performance desktop application designed to accelerate fretboard note memorization for guitarists, bassists, and ukulele players. By combining low-latency digital signal processing (DSP) pitch detection with configurable practice timers and instrument presets, FretTrain listens to your physical instrument in real-time and automatically verifies notes as you play.
+**FretSense** is a high-performance desktop application designed to accelerate fretboard note memorization for guitarists, bassists, and ukulele players. By combining low-latency digital signal processing (DSP) pitch detection with configurable practice timers and instrument presets, FretSense listens to your physical instrument in real-time and automatically verifies notes as you play.
 
 ---
 
 ## ✨ Key Features
 
-* **🎙️ Real-Time Pitch Detection**: Uses `aubio` (YIN algorithm) and `sounddevice` to analyze live audio input, displaying detected notes, octaves, exact frequency (Hz), and pitch deviation in cents.
-* **🎯 Interactive Target Circle**: Animated visual feedback target that turns amber while listening and flashes green when a target note is matched in tune.
-* **🎸 Comprehensive Instrument Presets**: Built-in support for:
-* 6-String, 7-String, and 8-String Standard Guitars
-* 4-String and 5-String Standard Basses
-* Standard, 5-String, and Baritone Ukuleles
-* Fully customizable string counts (1–8 strings) and per-string tunings.
+- **🎙️ Real-Time Pitch Detection**: Uses `aubio` (YIN algorithm) and `sounddevice` to analyze live audio input, displaying detected notes, octaves, exact frequency (Hz), and pitch deviation in cents.
+- **🎯 Interactive Target Circle**: Animated visual feedback target that turns amber while listening and flashes green when a target note is matched in tune.
+- **🎸 Comprehensive Instrument Presets**: Built-in support for:
+- 6-String, 7-String, and 8-String Standard Guitars
+- 4-String and 5-String Standard Basses
+- Standard, 5-String, and Baritone Ukuleles
+- Fully customizable string counts (1–8 strings) and per-string tunings.
 
-
-* **🎛️ Custom Rotary Guitar Knobs**: Tactile step controls for tweaking string counts and practice interval durations on the fly.
-* **⏱️ Non-Blocking Async Timer Engine**: Powered by a custom `TrainerTimer` supporting Auto-Advance flashcard mode with visual progress meters.
-* **🔊 Intelligent Audio Device Pipeline**: Automatically filters out virtual audio cables, system mappers, and secondary host API duplicates to present a clean list of physical microphones (with "System Default Microphone" support).
-* **🎨 Modern Responsive UI & Themes**: Built with Flet featuring dark/light mode switching, custom asset integration, and fluid responsive layouts.
+- **🎛️ Custom Rotary Guitar Knobs**: Tactile step controls for tweaking string counts and practice interval durations on the fly.
+- **⏱️ Non-Blocking Async Timer Engine**: Powered by a custom `TrainerTimer` supporting Auto-Advance flashcard mode with visual progress meters.
+- **🔊 Intelligent Audio Device Pipeline**: Automatically filters out virtual audio cables, system mappers, and secondary host API duplicates to present a clean list of physical microphones (with "System Default Microphone" support).
+- **🎨 Modern Responsive UI & Themes**: Built with Flet featuring dark/light mode switching, custom asset integration, and fluid responsive layouts.
 
 ---
 
 ## 🏗️ Project Architecture
 
 ```text
-FretTrain/
+FretSense/
 ├── assets/
 │   └── bg.png                  # App background asset
 ├── src/
@@ -50,7 +49,7 @@ FretTrain/
 
 ```
 
-```markdown
+````markdown
 ## 🚀 Quick Start & Installation
 
 Master the fretboard in minutes—no terminal wizardry required. Choose your path below:
@@ -63,9 +62,9 @@ Grab the ready-to-run installer or binary for your OS and jump straight into tra
 
 1. Go to the **[Latest Releases](../../releases)** page.
 2. Download and run the file for your operating system:
-   * **Windows:** Download and run `FretTrain-Setup.exe`
-   * **Linux:** Download `FretTrain.AppImage`, make it executable (`chmod +x FretTrain.AppImage`), and run!
-3. Launch `FretTrain` and start plugging in!
+   - **Windows:** Download and run `FretSense-Setup.exe`
+   - **Linux:** Download `FretSense.AppImage`, make it executable (`chmod +x FretSense.AppImage`), and run!
+3. Launch `FretSense` and start plugging in!
 
 ---
 
@@ -74,13 +73,14 @@ Grab the ready-to-run installer or binary for your OS and jump straight into tra
 Want to tweak the DSP, contribute code, or build new features? Spin up the source in an isolated virtual environment:
 
 #### Prerequisites
-* **Python**: 3.10 or higher
-* **PortAudio**: Audio backend library (installed automatically via `sounddevice` on Windows; install via package manager on Linux, e.g., `sudo apt install portaudio19-dev`).
+
+- **Python**: 3.10 or higher
+- **PortAudio**: Audio backend library (installed automatically via `sounddevice` on Windows; install via package manager on Linux, e.g., `sudo apt install portaudio19-dev`).
 
 ```bash
 # 1. Clone the repo & enter project directory
-git clone [https://github.com/your-username/FretTrain.git](https://github.com/your-username/FretTrain.git)
-cd FretTrain
+git clone [https://github.com/your-username/FretSense.git](https://github.com/your-username/FretSense.git)
+cd FretSense
 
 # 2. Set up virtual environment
 # Windows (PowerShell):
@@ -94,53 +94,52 @@ source venv/bin/activate
 # 3. Install dependencies & launch
 pip install -r requirements.txt
 python main.py
-
 ```
+````
 
 ---
 
 ### ⚡ Troubleshooting & Tips
 
-* **Windows Execution Policy:** If PowerShell blocks script activation, run:
+- **Windows Execution Policy:** If PowerShell blocks script activation, run:
+
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 
 ```
 
+- **Linux Permissions:** If using the AppImage, make sure execution permissions are granted:
 
-* **Linux Permissions:** If using the AppImage, make sure execution permissions are granted:
 ```bash
-chmod +x FretTrain.AppImage
+chmod +x FretSense.AppImage
 
 ```
 
-
-* **Audio Drivers:** For lowest latency while training, ensure your primary audio interface driver (ASIO/WASAPI on Windows or ALSA/PulseAudio/PIPEWIRE on Linux) is selected in settings.
-
+- **Audio Drivers:** For lowest latency while training, ensure your primary audio interface driver (ASIO/WASAPI on Windows or ALSA/PulseAudio/PIPEWIRE on Linux) is selected in settings.
 
 ---
 
 ### ⚡ Troubleshooting & Tips
 
-* **Windows Execution Policy:** If PowerShell blocks script activation, run:
+- **Windows Execution Policy:** If PowerShell blocks script activation, run:
+
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 
 ```
 
-
-* **Audio Drivers:** For lowest latency while training, ensure your primary audio interface driver (ASIO on Windows) is selected in settings.
+- **Audio Drivers:** For lowest latency while training, ensure your primary audio interface driver (ASIO on Windows) is selected in settings.
 
 ---
 
 ## 🛠️ Usage Guide
 
 1. **Select Microphone**: Choose your input microphone from the dropdown list in the **Instrument & Mic Setup** panel.
-2. **Choose Instrument**: Pick a preset (e.g., *Guitar 6-String Standard* or *Bass 4-String*) or construct a custom setup using the **Strings** knob.
+2. **Choose Instrument**: Pick a preset (e.g., _Guitar 6-String Standard_ or _Bass 4-String_) or construct a custom setup using the **Strings** knob.
 3. **Set Practice Mode**:
-* **Manual Mode**: Click **Next Note** or play the target note on your instrument to advance upon a correct match.
-* **Auto-Advance Mode**: Toggle **Auto-Advance Mode** to enable timed intervals configured via the **Timer** knob.
 
+- **Manual Mode**: Click **Next Note** or play the target note on your instrument to advance upon a correct match.
+- **Auto-Advance Mode**: Toggle **Auto-Advance Mode** to enable timed intervals configured via the **Timer** knob.
 
 4. **Play!**: Pluck the target note on your instrument. The central target circle provides live feedback showing your detected note and cents deviation, flashing green once the note is held in tune.
 
@@ -148,13 +147,13 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 
 ## 📣 Feedback & Community Testing
 
-FretTrain is under active development, and user feedback is essential to fine-tuning its performance!
+FretSense is under active development, and user feedback is essential to fine-tuning its performance!
 
 We are specifically seeking feedback on:
 
-* **Audio Performance & Latency**: How responsive is the pitch detection on your microphone or audio interface setup?
-* **Low-Frequency Accuracy**: How accurately does pitch detection perform on low-E ($E_2$) guitar strings or 4/5-string bass notes ($E_1 / B_0$)?
-* **UI & Workflow**: Are the controls intuitive? What additional practice modes or features (e.g., specific fret ranges, chord recognition) would you like to see?
+- **Audio Performance & Latency**: How responsive is the pitch detection on your microphone or audio interface setup?
+- **Low-Frequency Accuracy**: How accurately does pitch detection perform on low-E ($E_2$) guitar strings or 4/5-string bass notes ($E_1 / B_0$)?
+- **UI & Workflow**: Are the controls intuitive? What additional practice modes or features (e.g., specific fret ranges, chord recognition) would you like to see?
 
 If you encounter any bugs, pitch detection anomalies, or performance bottlenecks, please **Open an Issue** or submit a **Pull Request** with your audio interface details and OS specifications.
 

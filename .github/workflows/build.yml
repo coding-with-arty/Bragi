@@ -3,7 +3,7 @@ name: Build and Release Linux App
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 jobs:
   build-linux:
@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install Linux Audio Dependencies
         run: |
@@ -32,18 +32,18 @@ jobs:
 
       - name: Build Executable
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name FretTrain --paths src --add-data "assets:assets" main.py
+          pyinstaller --noconfirm --onedir --windowed --name FretSense --paths src --add-data "assets:assets" main.py
 
       - name: Compress Release
         run: |
           cd dist
-          tar -czvf FretTrain-Linux.tar.gz FretTrain
+          tar -czvf FretSense-Linux.tar.gz FretSense
 
       - name: Upload Linux Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           generate_release_notes: true
-          files: dist/FretTrain-Linux.tar.gz
+          files: dist/FretSense-Linux.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
