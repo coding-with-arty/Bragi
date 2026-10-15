@@ -2,12 +2,19 @@
 import sqlite3
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
-from models.progress import AttemptRecord, ChordStatSummary, PitchStatSummary, UserProfile, Achievement
+from typing import List, Optional, Dict
+from models.progress import (
+    AttemptRecord,
+    UserProfile,
+    Achievement,
+    NoteMastery,
+    MasteryTier
+)
+from utils.music_theory import CHROMATIC_SHARPS
 
 
 class ProgressRepository:
-    """Manages SQLite database storage for exercise attempt logs, analytics, user profile, and achievements."""
+    """SQLite repository managing attempts, profiles, badges, and mastery statistics."""
 
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
@@ -25,7 +32,6 @@ class ProgressRepository:
         return conn
 
     def _init_db(self) -> None:
-        """Initializes database schema tables."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -56,11 +62,18 @@ class ProgressRepository:
                     id TEXT PRIMARY KEY,
                     title TEXT NOT NULL,
                     description TEXT NOT NULL,
+                    category TEXT DEFAULT 'General',
                     icon_name TEXT NOT NULL,
                     unlocked INTEGER DEFAULT 0,
                     unlocked_at REAL
                 )
             """)
+
+            # Schema Migration: Ensure 'category' column exists in pre-existing local database files
+            cursor.execute("PRAGMA table_info(achievements)")
+            columns = [row["name"] for row in cursor.fetchall()]
+            if "category" not in columns:
+                cursor.execute("ALTER TABLE achievements ADD COLUMN category TEXT DEFAULT 'General'")
 
             cursor.execute("SELECT COUNT(*) FROM user_profile WHERE id = 1")
             if cursor.fetchone()[0] == 0:
@@ -113,7 +126,7 @@ class ProgressRepository:
             ))
             conn.commit()
 
-    def get_recent_attempts(self, limit: int = 50) -> List[AttemptRecord]:
+    def get_recent_attempts(self, limit: int = 100) -> List[AttemptRecord]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -135,49 +148,67 @@ class ProgressRepository:
                 for row in rows
             ]
 
-    def get_pitch_accuracies(self) -> Tuple[List[PitchStatSummary], List[PitchStatSummary]]:
-        """Calculates performance statistics grouped by note name and splits into strongest and weakest notes."""
+    def get_chromatic_mastery(self) -> Dict[str, NoteMastery]:
+        """Calculates memorization accuracy, avg speed, and tier ranking for all 12 pitch classes."""
+        mastery_map: Dict[str, NoteMastery] = {
+            note: NoteMastery(note_name=note) for note in CHROMATIC_SHARPS
+        }
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT
                     target_name,
                     COUNT(*) as total_attempts,
-                    SUM(is_success) as total_success
+                    SUM(is_success) as total_success,
+                    AVG(CASE WHEN is_success = 1 THEN response_time_sec END) as avg_time
                 FROM attempt_records
                 WHERE target_type = 'note'
                 GROUP BY target_name
-                HAVING total_attempts >= 3
-                ORDER BY (CAST(SUM(is_success) AS REAL) / COUNT(*)) DESC
             """)
             rows = cursor.fetchall()
 
-            all_stats = []
             for row in rows:
-                attempts = row["total_attempts"]
-                successes = row["total_success"] or 0
-                acc = (successes / attempts * 100.0) if attempts > 0 else 0.0
-                all_stats.append(PitchStatSummary(
-                    note_name=row["target_name"],
-                    attempts_count=attempts,
-                    success_count=successes,
-                    accuracy_percentage=round(acc, 1)
-                ))
+                note = row["target_name"]
+                if note in mastery_map:
+                    attempts = row["total_attempts"]
+                    successes = row["total_success"] or 0
+                    avg_time = row["avg_time"] or 0.0
+                    acc = (successes / attempts * 100.0) if attempts > 0 else 0.0
 
-            strongest = all_stats[:3]
-            weakest = sorted(all_stats, key=lambda x: x.accuracy_percentage)[:3] if len(all_stats) > 3 else []
-            return strongest, weakest
+                    tier = MasteryTier.UNRANKED
+                    if attempts >= 5:
+                        if acc >= 95.0 and avg_time <= 1.2:
+                            tier = MasteryTier.PLATINUM
+                        elif acc >= 85.0 and avg_time <= 2.0:
+                            tier = MasteryTier.GOLD
+                        elif acc >= 75.0 and avg_time <= 3.0:
+                            tier = MasteryTier.SILVER
+                        elif acc >= 60.0:
+                            tier = MasteryTier.BRONZE
+
+                    mastery_map[note] = NoteMastery(
+                        note_name=note,
+                        attempts_count=attempts,
+                        success_count=successes,
+                        accuracy_percentage=round(acc, 1),
+                        avg_response_time_sec=round(avg_time, 2),
+                        tier=tier
+                    )
+
+        return mastery_map
 
     def get_achievements(self) -> List[Achievement]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, title, description, icon_name, unlocked, unlocked_at FROM achievements")
+            cursor.execute("SELECT id, title, description, category, icon_name, unlocked, unlocked_at FROM achievements")
             rows = cursor.fetchall()
             return [
                 Achievement(
                     id=row["id"],
                     title=row["title"],
                     description=row["description"],
+                    category=row["category"] or "General",
                     icon_name=row["icon_name"],
                     unlocked=bool(row["unlocked"]),
                     unlocked_at=row["unlocked_at"]
@@ -200,7 +231,7 @@ class ProgressRepository:
             cursor = conn.cursor()
             for ach in defaults:
                 cursor.execute("""
-                    INSERT OR IGNORE INTO achievements (id, title, description, icon_name, unlocked, unlocked_at)
-                    VALUES (?, ?, ?, ?, 0, NULL)
-                """, (ach.id, ach.title, ach.description, ach.icon_name))
+                    INSERT OR IGNORE INTO achievements (id, title, description, category, icon_name, unlocked, unlocked_at)
+                    VALUES (?, ?, ?, ?, ?, 0, NULL)
+                """, (ach.id, ach.title, ach.description, ach.category, ach.icon_name))
             conn.commit()

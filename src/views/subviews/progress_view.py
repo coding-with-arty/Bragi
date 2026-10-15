@@ -1,13 +1,22 @@
 # src/views/subviews/progress_view.py
-from typing import Optional
+from typing import Optional, List
 import flet as ft
 from storage.progress_repository import ProgressRepository
 from engine.gamification import GamificationEngine
+from models.progress import MasteryTier, Achievement
 from utils.theme_manager import ThemeManager
 
 
 class ProgressView(ft.Column):
-    """Analytics and gamification dashboard presenting user level, streak, weak notes, and achievements."""
+    """Achievement-driven Analytics and Gamification Hub."""
+
+    TIER_COLORS = {
+        MasteryTier.UNRANKED: ft.Colors.GREY_700,
+        MasteryTier.BRONZE: "#CD7F32",
+        MasteryTier.SILVER: "#C0C0C0",
+        MasteryTier.GOLD: "#FFD700",
+        MasteryTier.PLATINUM: "#E5E4E2",
+    }
 
     def __init__(self, repository: ProgressRepository, theme_manager: Optional[ThemeManager] = None):
         super().__init__()
@@ -15,10 +24,13 @@ class ProgressView(ft.Column):
         self.gamification = GamificationEngine(self.repository)
         self.theme_manager = theme_manager
         self.expand = True
+        self.scroll = ft.ScrollMode.AUTO
+        self.active_category_filter = "All"
 
-        self.title_text = ft.Text("PROGRESS & GAMIFICATION DASHBOARD", size=22, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400)
+        # Header Title
+        self.title_text = ft.Text("ACHIEVEMENTS & MASTERY HUB", size=22, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400)
 
-        # Profile Summary Card
+        # Profile Summary Header Card
         self.level_text = ft.Text("Level 1", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400)
         self.xp_text = ft.Text("0 / 50 XP", size=13, color=ft.Colors.GREY_400)
         self.streak_text = ft.Text("0 🔥", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_300)
@@ -57,64 +69,58 @@ class ProgressView(ft.Column):
             border=ft.Border.all(1, "#3E354A"),
         )
 
-        # Metric Cards
-        self.total_attempts_card = self._create_metric_card("Total Attempts", "0")
-        self.accuracy_card = self._create_metric_card("Overall Accuracy", "0.0%")
-        self.latency_card = self._create_metric_card("Avg Response Time", "0.0s")
+        # Dynamic Challenges Section
+        self.challenges_column = ft.Column(spacing=10)
 
-        self.metrics_row = ft.Row(
-            controls=[self.total_attempts_card, self.accuracy_card, self.latency_card],
-            alignment=ft.MainAxisAlignment.SPACE_EVENLY
-        )
+        # 12 Chromatic Pitch Class Mastery Matrix
+        self.mastery_grid = ft.Row(wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START)
 
-        # Strongest and Weakest Note Breakdown Chips
-        self.strong_weak_row = ft.Row(
-            alignment=ft.MainAxisAlignment.SPACE_AROUND,
-            controls=[]
-        )
-
-        # Achievements Grid
-        self.achievements_row = ft.Row(
-            spacing=10,
-            wrap=True,
-            controls=[]
-        )
-
-        # History List
-        self.history_listview = ft.ListView(
-            expand=True,
+        # Achievement Filter Tabs / Chips
+        self.category_chips = ft.Row(
             spacing=8,
-            padding=10
+            controls=[
+                ft.Chip(
+                    label=ft.Text(cat),
+                    selected=(cat == self.active_category_filter),
+                    on_select=lambda e, c=cat: self._filter_achievements(c)
+                )
+                for cat in ["All", "Memorization", "Accuracy", "Speed", "Ear Training"]
+            ]
         )
+
+        # Achievement Cards Grid
+        self.achievements_grid = ft.Row(wrap=True, spacing=10)
 
         self.controls = [
             ft.Container(content=self.title_text, padding=16),
             self.profile_card,
             ft.Container(height=12),
-            self.metrics_row,
+            ft.Text("ACTIVE PRACTICE CHALLENGES", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_300),
+            self.challenges_column,
             ft.Container(height=16),
-            ft.Text("STRONG & WEAK NOTE MASTERY", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_300),
-            self.strong_weak_row,
+            ft.Text("FRETBOARD CHROMATIC MEMORIZATION MATRIX", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_300),
+            ft.Text("Rank up notes by maintaining >85% accuracy and fast response speed.", size=12, color=ft.Colors.GREY_400),
+            ft.Container(height=6),
+            self.mastery_grid,
             ft.Container(height=16),
-            ft.Text("UNLOCKED BADGES & ACHIEVEMENTS", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_300),
-            self.achievements_row,
-            ft.Container(height=16),
-            ft.Text("RECENT PRACTICE HISTORY", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_300),
-            ft.Container(
-                content=self.history_listview,
-                expand=True,
-                padding=10,
-                border=ft.Border.all(1, "#3E354A"),
-                border_radius=12,
-                bgcolor="#231F2D"
-            )
+            ft.Text("MILESTONE BADGES & ACHIEVEMENTS", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_300),
+            self.category_chips,
+            ft.Container(height=8),
+            self.achievements_grid,
+            ft.Container(height=24),
         ]
 
     def did_mount(self):
         self.refresh_stats()
 
+    def _filter_achievements(self, category: str):
+        self.active_category_filter = category
+        for chip in self.category_chips.controls:
+            chip.selected = (chip.label.value == category)
+        self.refresh_stats()
+
     def refresh_stats(self):
-        """Queries repository and updates analytics visual widgets."""
+        """Refreshes XP level, active challenges, memorization tiers, and badge grids."""
         profile = self.repository.get_profile()
         curr_lvl = profile.current_level
         min_xp = self.gamification.xp_for_level(curr_lvl)
@@ -128,40 +134,73 @@ class ProgressView(ft.Column):
         self.xp_progress_bar.value = progress
         self.streak_text.value = f"{profile.current_streak} Days 🔥"
 
-        # Attempt statistics calculation
-        attempts = self.repository.get_recent_attempts(limit=100)
-        total = len(attempts)
-        successful = sum(1 for a in attempts if a.is_success)
-        accuracy = (successful / total * 100.0) if total > 0 else 0.0
+        # 1. Active Challenges Render
+        challenges = self.gamification.get_active_challenges()
+        ch_controls = []
+        for ch in challenges:
+            ch_card = ft.Container(
+                content=ft.Row(
+                    controls=[
+                        ft.Icon(
+                            ft.Icons.CHECK_CIRCLE if ch.is_completed else ft.Icons.DRAG_HANDLE,
+                            color=ft.Colors.GREEN_400 if ch.is_completed else ft.Colors.AMBER_400,
+                            size=26
+                        ),
+                        ft.Column(
+                            controls=[
+                                ft.Text(ch.title, weight=ft.FontWeight.BOLD, size=13),
+                                ft.Text(ch.description, size=11, color=ft.Colors.GREY_400),
+                                ft.ProgressBar(value=ch.current_count / float(ch.target_count), width=200, color=ft.Colors.AMBER_400),
+                            ],
+                            spacing=2,
+                            expand=True,
+                        ),
+                        ft.Text(f"+{ch.xp_reward} XP", weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_300)
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+                ),
+                padding=12,
+                border_radius=10,
+                bgcolor="#231F2D",
+                border=ft.Border.all(1, "#3E354A"),
+            )
+            ch_controls.append(ch_card)
+        self.challenges_column.controls = ch_controls
 
-        latencies = [a.response_time_sec for a in attempts if a.is_success]
-        avg_latency = (sum(latencies) / len(latencies)) if latencies else 0.0
+        # 2. Chromatic Memorization Matrix Render
+        mastery_map = self.repository.get_chromatic_mastery()
+        m_controls = []
+        for note, stats in mastery_map.items():
+            tier_color = self.TIER_COLORS[stats.tier]
+            card = ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Text(note, size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                        ft.Text(f"{stats.tier.value.upper()}", size=10, weight=ft.FontWeight.BOLD, color=tier_color),
+                        ft.Text(f"{stats.accuracy_percentage}% | {stats.avg_response_time_sec}s", size=10, color=ft.Colors.GREY_400),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
+                ),
+                padding=10,
+                border_radius=10,
+                bgcolor="#231F2D",
+                border=ft.Border.all(2, tier_color),
+                width=100,
+                alignment=ft.Alignment.CENTER,
+            )
+            m_controls.append(card)
+        self.mastery_grid.controls = m_controls
 
-        self.total_attempts_card.content.controls[1].value = str(total)
-        self.accuracy_card.content.controls[1].value = f"{accuracy:.1f}%"
-        self.latency_card.content.controls[1].value = f"{avg_latency:.2f}s"
-
-        # Strongest and Weakest Note Breakdown Chips
-        strongest, weakest = self.repository.get_pitch_accuracies()
-
-        strong_chips = [
-            ft.Chip(label=ft.Text(f"💪 {s.note_name}: {s.accuracy_percentage}%"), bgcolor=ft.Colors.GREEN_900)
-            for s in strongest
-        ]
-        weak_chips = [
-            ft.Chip(label=ft.Text(f"🎯 {w.note_name}: {w.accuracy_percentage}%"), bgcolor=ft.Colors.RED_900)
-            for w in weakest
-        ]
-
-        self.strong_weak_row.controls = [
-            ft.Column(controls=[ft.Text("Strongest Notes", size=12, color=ft.Colors.GREY_400)] + strong_chips),
-            ft.Column(controls=[ft.Text("Weakest Notes to Practice", size=12, color=ft.Colors.GREY_400)] + weak_chips),
-        ]
-
-        # Render Achievements
+        # 3. Filtered Achievement Badges Render
         achievements = self.repository.get_achievements()
-        ach_controls = []
-        for ach in achievements:
+        filtered = [
+            a for a in achievements
+            if self.active_category_filter == "All" or a.category == self.active_category_filter
+        ]
+
+        badge_controls = []
+        for ach in filtered:
             col = ft.Colors.AMBER_400 if ach.unlocked else ft.Colors.GREY_700
             bg = "#312B3D" if ach.unlocked else "#1E1A26"
             card = ft.Container(
@@ -184,40 +223,11 @@ class ProgressView(ft.Column):
                 border=ft.Border.all(1, col if ach.unlocked else "#3E354A"),
                 width=240,
             )
-            ach_controls.append(card)
+            badge_controls.append(card)
 
-        self.achievements_row.controls = ach_controls
-
-        # Render Recent History
-        history_controls = []
-        for att in attempts[:20]:
-            status_icon = ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN_400) if att.is_success else ft.Icon(ft.Icons.CANCEL, color=ft.Colors.RED_400)
-            item = ft.ListTile(
-                leading=status_icon,
-                title=ft.Text(f"{att.target_name} ({att.target_type.upper()})", weight=ft.FontWeight.BOLD),
-                subtitle=ft.Text(f"Response Time: {att.response_time_sec:.2f}s | Cents Error: {att.cents_error:.1f}c"),
-            )
-            history_controls.append(item)
-
-        self.history_listview.controls = history_controls
+        self.achievements_grid.controls = badge_controls
 
         try:
             self.update()
         except RuntimeError:
             pass
-
-    def _create_metric_card(self, title: str, initial_val: str) -> ft.Container:
-        return ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Text(title, size=12, color=ft.Colors.GREY_400),
-                    ft.Text(initial_val, size=22, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400),
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=14,
-            border_radius=12,
-            bgcolor="#231F2D",
-            border=ft.Border.all(1, "#3E354A"),
-            width=180
-        )
