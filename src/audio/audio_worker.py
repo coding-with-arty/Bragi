@@ -1,9 +1,4 @@
-"""
-src/audio/audio_worker.py
-=========================
-Thread-safe background audio processing worker supporting Note and Chord modes.
-"""
-
+# src/audio/audio_worker.py
 import sys
 import threading
 import time
@@ -15,6 +10,7 @@ from engine.note_evaluator import NoteEvaluator, SingleNoteMatchStatement, Evalu
 from engine.chord_evaluator import ChordEvaluator
 from engine.arpeggio_buffer import ArpeggioBuffer
 from audio.chord_detector import ChordDetector
+from utils.music_theory import NOTE_TO_PITCH_INDEX
 
 
 class AudioWorker:
@@ -22,7 +18,7 @@ class AudioWorker:
 
     def __init__(
         self,
-        pitch_detector: Any,  # Monophonic PitchDetector (aubio YIN)
+        pitch_detector: Any,
         settings: Optional[TrainerSettings] = None,
         on_pitch_update: Optional[Callable[[EvaluatedPitchPayload], None]] = None,
         on_note_matched: Optional[Callable[[SingleNoteMatchStatement], None]] = None,
@@ -37,7 +33,6 @@ class AudioWorker:
         self._on_chord_matched = on_chord_matched
         self._on_chord_pitch_update = on_chord_pitch_update
 
-        # Domain Evaluators
         self.note_evaluator = NoteEvaluator(
             tolerance_cents=self._settings.audio_settings.tolerance_cents,
             min_volume_db=self._settings.audio_settings.min_volume_db,
@@ -66,23 +61,19 @@ class AudioWorker:
         self._worker_thread: Optional[threading.Thread] = None
 
     def set_input_device(self, device_id: Optional[int]) -> None:
-        """Updates hardware input device index."""
         if hasattr(self._pitch_detector, "set_device"):
             self._pitch_detector.set_device(device_id)
 
     def set_target_note(self, note_name: str, octave: Optional[int] = None) -> None:
-        """Sets active target for single-note mode."""
         with self._lock:
             self.note_evaluator.set_target(note_name, octave)
 
     def set_target_chord(self, target_chord: TargetChord) -> None:
-        """Sets active target for chord mode."""
         with self._lock:
             self.chord_evaluator.set_target(target_chord)
             self.arpeggio_buffer.clear()
 
     def update_settings(self, new_settings: TrainerSettings) -> None:
-        """Dynamically applies updated configuration parameters."""
         with self._lock:
             self._settings = new_settings
             self.note_evaluator.tolerance_cents = new_settings.audio_settings.tolerance_cents
@@ -96,7 +87,6 @@ class AudioWorker:
             self.chord_detector.silence_threshold_db = new_settings.audio_settings.min_volume_db
 
     def start(self) -> None:
-        """Starts background worker thread."""
         with self._lock:
             if self._running_event.is_set():
                 return
@@ -110,7 +100,6 @@ class AudioWorker:
             self._worker_thread.start()
 
     def stop(self) -> None:
-        """Stops background worker thread."""
         with self._lock:
             if not self._running_event.is_set():
                 return
@@ -121,7 +110,6 @@ class AudioWorker:
             self._worker_thread.join(timeout=2.0)
 
     def _processing_loop(self) -> None:
-        """Background execution loop."""
         while self._running_event.is_set():
             self._pause_event.wait()
             if not self._running_event.is_set():
@@ -135,7 +123,6 @@ class AudioWorker:
             time.sleep(0.01)
 
     def _process_note_mode(self) -> None:
-        """Executes single-note processing step using monophonic pitch detector."""
         if not hasattr(self._pitch_detector, "get_latest"):
             return
 
@@ -163,7 +150,6 @@ class AudioWorker:
             except Exception as err:
                 sys.stderr.write(f"[AudioWorker] Note match callback error: {err}\n")
 
-    # src/audio/audio_worker.py
     def _process_chord_mode(self) -> None:
         if not hasattr(self._pitch_detector, "get_latest"):
             return
@@ -177,7 +163,6 @@ class AudioWorker:
 
         detected_pcs: Set[int] = set()
 
-        # Inside AudioWorker._process_chord_mode():
         if self._settings.validation_mode == ValidationMode.ARPEGGIO_SEQUENCE:
             if vol_db >= min_vol and pdata.note_name != "N/A":
                 pc = NOTE_TO_PITCH_INDEX.get(pdata.note_name.upper())
@@ -185,7 +170,6 @@ class AudioWorker:
                     self.arpeggio_buffer.add_pitch_class(pc)
             detected_pcs = self.arpeggio_buffer.get_active_pitch_classes()
         else:
-            # Pass raw PCM audio buffer to the rolling high-resolution polyphonic detector
             active_pcs, _, is_silent, _ = self.chord_detector.process_frame(pdata.raw_signal)
             if not is_silent and vol_db >= min_vol:
                 detected_pcs = active_pcs
