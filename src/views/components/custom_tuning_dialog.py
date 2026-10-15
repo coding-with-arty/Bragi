@@ -52,7 +52,7 @@ class CustomTuningDialog(ft.AlertDialog):
                     spacing=14,
                     controls=[
                         ft.Row(
-                            alignment=ft.MainAxisAlignment.BETWEEN,
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                             controls=[
                                 ft.Text("Configure open pitches per string:", size=13, color=ft.Colors.GREY_400),
                                 self.string_count_dropdown,
@@ -107,7 +107,7 @@ class CustomTuningDialog(ft.AlertDialog):
             )
 
             row = ft.Row(
-                alignment=ft.MainAxisAlignment.BETWEEN,
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 controls=[
                     ft.Text(f"String {string_num}:", weight=ft.FontWeight.BOLD, size=14, width=70),
                     note_dd,

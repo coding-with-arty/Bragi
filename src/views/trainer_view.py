@@ -1,7 +1,7 @@
 # src/views/trainer_view.py
 import asyncio
 import time
-from typing import Optional, Set
+from typing import Optional, Set, List, Tuple
 import flet as ft
 
 from views.components.header import Header
@@ -10,9 +10,12 @@ from views.components.chord_display import ChordDisplay
 from views.components.filter_panel import FilterPanel
 from views.components.guitar_knob import GuitarKnob
 from views.components.tuning_panel import TuningPanel
+from views.components.custom_instrument_dialog import CustomInstrumentDialog
 
 from models.settings import TrainerSettings, DetectionMode, PracticeMode
 from models.chord import TargetChord, ChordMatchStatement
+from models.instrument import InstrumentProfile
+from storage.instrument_store import InstrumentStore, BUILTIN_PROFILES
 from engine.note_evaluator import SingleNoteMatchStatement, EvaluatedPitchPayload
 from engine.chord_generator import ChordGenerator
 
@@ -25,7 +28,7 @@ from audio.audio_worker import AudioWorker
 
 
 class TrainerView(ft.Column):
-    """Main application trainer view supporting single note and chord modes."""
+    """Main application trainer view supporting single note, chord modes, and custom instruments."""
 
     def __init__(self, theme_manager: ThemeManager):
         super().__init__()
@@ -34,10 +37,12 @@ class TrainerView(ft.Column):
         self._is_transitioning = False
 
         self.settings = TrainerSettings()
+        self.instrument_store = InstrumentStore()
+        self.active_profile: InstrumentProfile = BUILTIN_PROFILES[0]
 
         # Base Tuning State
-        self.current_tuning = MusicTheory.get_preset_tuning("Guitar (6-String Standard)")
-        self.num_strings = len(self.current_tuning)
+        self.current_tuning: List[Tuple[str, int]] = self.active_profile.to_tuning_tuples()
+        self.num_strings: int = len(self.current_tuning)
 
         # Audio Engine Setup
         self.detector = PitchDetector()
@@ -75,10 +80,22 @@ class TrainerView(ft.Column):
 
         self.preset_dropdown = ft.Dropdown(
             label="Instrument Preset",
-            options=[ft.DropdownOption(key=p, text=p) for p in MusicTheory.get_presets()],
-            value="Guitar (6-String Standard)",
+            options=[ft.DropdownOption(key=p.name, text=p.name) for p in self.instrument_store.get_all_profiles()],
+            value=self.active_profile.name,
             expand=True,
             on_select=self.on_preset_change,
+        )
+
+        self.builder_button = ft.IconButton(
+            icon=ft.Icons.ADD_CIRCLE_OUTLINED,
+            icon_color=ft.Colors.AMBER_400,
+            tooltip="Open Custom Instrument Builder",
+            on_click=self.open_custom_builder,
+        )
+
+        self.preset_row = ft.Row(
+            controls=[self.preset_dropdown, self.builder_button],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
 
         self.mic_dropdown = ft.Dropdown(
@@ -88,7 +105,7 @@ class TrainerView(ft.Column):
             on_select=self.on_mic_selected,
         )
 
-        # New Modular Custom Tuning Panel
+        # Custom Tuning Panel
         self.tuning_panel = TuningPanel(
             initial_tuning=self.current_tuning,
             on_tuning_changed=self.on_custom_tuning_changed
@@ -106,7 +123,7 @@ class TrainerView(ft.Column):
         self.string_count_knob = GuitarKnob(
             label="Strings",
             min_val=1,
-            max_val=8,
+            max_val=10,
             initial_val=self.num_strings,
             unit="",
             theme_manager=self.theme_manager,
@@ -147,7 +164,7 @@ class TrainerView(ft.Column):
             content=ft.Column(
                 controls=[
                     self.preset_title,
-                    self.preset_dropdown,
+                    self.preset_row,
                     self.mic_dropdown,
                     self.tuning_expansion,
                 ],
@@ -241,7 +258,7 @@ class TrainerView(ft.Column):
 
     def did_mount(self):
         self.populate_microphones(update_page=False)
-        self.apply_preset("Guitar (6-String Standard)", update_page=False)
+        self.apply_instrument_profile(self.active_profile)
         if self.audio_switch.value:
             self.detector.start()
             self.worker.start()
@@ -265,6 +282,54 @@ class TrainerView(ft.Column):
             self.worker.set_input_device(None)
         if update_page and self.page:
             self.page.update()
+
+    def open_custom_builder(self, e=None):
+        """Opens the custom instrument builder modal dialog."""
+        dialog = CustomInstrumentDialog(
+            instrument_store=self.instrument_store,
+            on_instrument_saved=self.on_custom_instrument_saved,
+            existing_profile=self.active_profile if self.active_profile.is_custom else None,
+            theme_manager=self.theme_manager
+        )
+        if self.page:
+            self.page.overlay.append(dialog)
+            dialog.open = True
+            self.page.update()
+
+    def on_custom_instrument_saved(self, profile: InstrumentProfile):
+        """Callback invoked when a custom instrument is created, updated, or deleted."""
+        profiles = self.instrument_store.get_all_profiles()
+        self.preset_dropdown.options = [ft.DropdownOption(key=p.name, text=p.name) for p in profiles]
+        self.apply_instrument_profile(profile)
+
+    def apply_instrument_profile(self, profile: InstrumentProfile):
+        """Applies an InstrumentProfile model to the trainer state and updates UI widgets."""
+        self.active_profile = profile
+        self.preset_dropdown.value = profile.name
+        self.num_strings = profile.string_count
+        self.current_tuning = profile.to_tuning_tuples()
+
+        self.string_count_knob.set_value(self.num_strings, update_page=False)
+        if hasattr(self, 'tuning_panel'):
+            self.tuning_panel.update_tuning_externally(self.current_tuning)
+
+        self.generate_next_target()
+        if self.page:
+            self.page.update()
+
+    def on_preset_change(self, e):
+        """Handles user selecting a different instrument preset in the dropdown."""
+        preset_name = self.preset_dropdown.value
+        if preset_name:
+            profile = self.instrument_store.get_profile_by_name(preset_name)
+            if profile:
+                self.apply_instrument_profile(profile)
+
+    def apply_preset(self, preset_name: str, update_page: bool = True):
+        """Backward compatible helper for preset activation."""
+        profile = self.instrument_store.get_profile_by_name(preset_name)
+        if profile:
+            self.apply_instrument_profile(profile)
 
     def on_mic_selected(self, e):
         val = self.mic_dropdown.value
@@ -297,31 +362,10 @@ class TrainerView(ft.Column):
         self.sidebar_container.bgcolor = bg_sidebar
         self.sidebar_container.border = ft.Border.all(1, border_col)
 
-    def on_preset_change(self, e):
-        preset_name = self.preset_dropdown.value
-        if preset_name and preset_name != "Custom":
-            self.apply_preset(preset_name)
-
-    def apply_preset(self, preset_name: str, update_page: bool = True):
-        self.preset_dropdown.value = preset_name
-        tunings = MusicTheory.get_preset_tuning(preset_name)
-        if tunings:
-            self.num_strings = len(tunings)
-            self.current_tuning = list(tunings)  # Apply exact preset tuning array
-            self.string_count_knob.set_value(self.num_strings, update_page=False)
-
-            if hasattr(self, 'tuning_panel'):
-                self.tuning_panel.update_tuning_externally(self.current_tuning)
-
-            self.generate_next_target(update_page=False)
-            if update_page and self.page:
-                self.page.update()
-
     def on_string_count_knob_change(self, val: int):
         self.num_strings = val
         self.preset_dropdown.value = "Custom"
 
-        # Pad or truncate the tuning list cleanly to match the knob val
         while len(self.current_tuning) < self.num_strings:
             self.current_tuning.append(("E", 2))
         if len(self.current_tuning) > self.num_strings:
@@ -392,7 +436,6 @@ class TrainerView(ft.Column):
         self._is_transitioning = False
 
         if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
-            # FIX: Build active strings list using actual dynamic custom tuning
             active_strings = []
             for i in range(self.num_strings):
                 if i < len(self.current_tuning):
