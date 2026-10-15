@@ -1,9 +1,4 @@
-"""
-src/engine/chord_evaluator.py
-=============================
-Domain evaluator for verifying detected audio pitch class sets against TargetChord definitions.
-"""
-
+# src/engine/chord_evaluator.py
 import time
 from typing import Set, Tuple, Optional
 from models.chord import TargetChord, ChordMatchStatement
@@ -11,11 +6,11 @@ from models.settings import ValidationMode
 
 
 class ChordEvaluator:
-    """Stateful evaluator for chord accuracy, pitch class set matching, and hold timing."""
+    """Evaluates detected audio pitch class sets against active target chord definitions."""
 
     def __init__(
         self,
-        hold_duration_sec: float = 0.35,
+        hold_duration_sec: float = 0.30,
         lockout_duration_sec: float = 0.50,
         validation_mode: ValidationMode = ValidationMode.RELAXED_PITCH_CLASS,
     ) -> None:
@@ -29,16 +24,16 @@ class ChordEvaluator:
         self._lockout_until_timestamp: float = 0.0
 
     def set_target(self, target_chord: TargetChord) -> None:
-        """Sets the active exercise TargetChord and resets evaluation state."""
+        """Sets active target chord and clears state."""
         self._target_chord = target_chord
         self.reset_state()
 
     def set_validation_mode(self, mode: ValidationMode) -> None:
-        """Dynamically switches chord validation strictness."""
+        """Sets chord recognition validation mode."""
         self.validation_mode = mode
 
     def reset_state(self) -> None:
-        """Resets debounce hold timestamps."""
+        """Resets hold timers."""
         self._hold_start_time = None
         self._lockout_until_timestamp = 0.0
         self._target_set_timestamp = time.monotonic()
@@ -50,12 +45,7 @@ class ChordEvaluator:
         min_volume_db: float = -45.0
     ) -> Tuple[bool, Optional[ChordMatchStatement]]:
         """
-        Evaluates a set of detected pitch classes against the active target chord.
-
-        :param detected_pitch_classes: Set of integer pitch classes 0..11 present in audio
-        :param volume_db: Recorded volume level in dBFS
-        :param min_volume_db: Minimum required audio volume threshold
-        :return: Tuple of (is_currently_valid_bool, Optional[ChordMatchStatement])
+        Verifies if detected pitch classes satisfy the active target chord.
         """
         now = time.monotonic()
         target = self._target_chord
@@ -67,11 +57,11 @@ class ChordEvaluator:
         missing_pcs = required_pcs - detected_pitch_classes
         extra_pcs = detected_pitch_classes - required_pcs
 
-        # Core chord validation rule: detected set must be a superset containing all required chord pitch classes
-        is_pitch_set_satisfied = len(missing_pcs) == 0
+        # Core chord condition: All required chord pitch classes must be present
+        is_pitch_set_satisfied = (len(missing_pcs) == 0)
 
-        # Enforce non-chord tone tolerance (allow up to 1 extra pitch class for overtone noise)
-        is_extra_acceptable = len(extra_pcs) <= 1
+        # Allow up to 2 extra pitch classes for pick noise, overtones, and decaying resonance
+        is_extra_acceptable = (len(extra_pcs) <= 2)
 
         is_frame_valid = is_pitch_set_satisfied and is_extra_acceptable
         match_statement = None

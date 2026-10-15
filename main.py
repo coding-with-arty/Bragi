@@ -1,9 +1,22 @@
+# main.py
 """
 main.py
 =======
-Application entry point for FretSense.
-Configures page layout, top-level tab navigation, and theme initialization.
+Application entry point for FretTrain / FretSense.
+Configures system import paths, page layout, top-level tab navigation, and theme initialization.
 """
+
+import sys
+from pathlib import Path
+
+# Fix module import paths by appending project root and src directories
+project_root = Path(__file__).resolve().parent
+src_path = project_root / "src"
+
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+if src_path.exists() and str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 
 import flet as ft
 from storage.progress_repository import ProgressRepository
@@ -14,7 +27,7 @@ from views.subviews.progress_view import ProgressView
 
 
 def main(page: ft.Page):
-    page.title = "FretSense - Fretboard & Chord Trainer"
+    page.title = "FretTrain - Fretboard & Chord Trainer"
     page.padding = 12
     page.theme_mode = ft.ThemeMode.DARK
 

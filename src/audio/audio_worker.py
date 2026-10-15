@@ -177,16 +177,15 @@ class AudioWorker:
 
         detected_pcs: Set[int] = set()
 
+        # Inside AudioWorker._process_chord_mode():
         if self._settings.validation_mode == ValidationMode.ARPEGGIO_SEQUENCE:
-            # Retain existing arpeggiator logic using the monophonic tracker
             if vol_db >= min_vol and pdata.note_name != "N/A":
-                from utils.music_theory import NOTE_TO_PITCH_INDEX
                 pc = NOTE_TO_PITCH_INDEX.get(pdata.note_name.upper())
                 if pc is not None:
                     self.arpeggio_buffer.add_pitch_class(pc)
             detected_pcs = self.arpeggio_buffer.get_active_pitch_classes()
         else:
-            # FIX: Use the polyphonic DSP engine for single-frame chord evaluation
+            # Pass raw PCM audio buffer to the rolling high-resolution polyphonic detector
             active_pcs, _, is_silent, _ = self.chord_detector.process_frame(pdata.raw_signal)
             if not is_silent and vol_db >= min_vol:
                 detected_pcs = active_pcs
