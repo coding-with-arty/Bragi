@@ -1,4 +1,3 @@
-# src/views/components/custom_tuning_dialog.py
 """
 src/views/components/custom_tuning_dialog.py
 =============================================
@@ -6,10 +5,13 @@ Interactive modal dialog allowing users to define custom string counts (1 to 8),
 configure individual string tuning notes and octaves, and apply custom instrument presets.
 """
 
-from typing import Callable, List, Tuple
+from typing import Callable, List, Tuple, Optional
 import flet as ft
 from utils.music_theory import MusicTheory, CHROMATIC_SHARPS
 from utils.theme_manager import ThemeManager
+
+ElevatedBtn = getattr(ft, "ElevatedButton", None) or getattr(ft, "FilledButton", None) or getattr(ft, "Button", ft.TextButton)
+TextBtn = getattr(ft, "TextButton", None) or getattr(ft, "Button", ft.Container)
 
 
 class CustomTuningDialog(ft.AlertDialog):
@@ -64,8 +66,8 @@ class CustomTuningDialog(ft.AlertDialog):
                 ),
             ),
             actions=[
-                ft.TextButton("Cancel", on_click=self._close_dialog),
-                ft.ElevatedButton(
+                TextBtn("Cancel", on_click=self._close_dialog),
+                ElevatedBtn(
                     "Apply Tuning",
                     icon=ft.Icons.CHECK_ROUNDED,
                     style=ft.ButtonStyle(
@@ -124,7 +126,6 @@ class CustomTuningDialog(ft.AlertDialog):
         current_count = len(self.string_configs)
 
         if new_count > current_count:
-            # Append default E2 strings for added bass strings
             for _ in range(new_count - current_count):
                 self.string_configs.append(("E", 2))
         elif new_count < current_count:
@@ -147,6 +148,12 @@ class CustomTuningDialog(ft.AlertDialog):
         self.string_configs[idx] = (note, octave)
 
     def _close_dialog(self, e=None) -> None:
+        if self.page and hasattr(self.page, "close"):
+            try:
+                self.page.close(self)
+                return
+            except Exception:
+                pass
         self.open = False
         if self.page:
             self.page.update()

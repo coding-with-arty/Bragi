@@ -130,6 +130,15 @@ class AudioWorker:
         if pdata is None:
             return
 
+        # Forward live pitch data to global AudioManager for Tuner and other subscribers
+        from services.audio_manager import AudioManager
+        am = AudioManager.get_instance()
+        if pdata.frequency > 20.0:
+            conf = 0.95 if getattr(pdata, "db_level", -30.0) > -50.0 else 0.2
+            am.process_frequency(pdata.frequency, confidence=conf)
+        else:
+            am.process_frequency(0.0, 0.0)
+
         pitch_payload, match_statement = self.note_evaluator.evaluate_frame(
             frequency=pdata.frequency,
             cents=pdata.cents,
