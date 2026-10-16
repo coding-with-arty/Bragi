@@ -1,4 +1,9 @@
-# src/views/components/custom_instrument_dialog.py
+"""
+src/views/components/custom_instrument_dialog.py
+=================================================
+Interactive Custom Instrument Builder modal dialog.
+"""
+
 import uuid
 from typing import Callable, Optional, List
 import flet as ft
@@ -6,6 +11,10 @@ from models.instrument import InstrumentProfile, StringConfig
 from storage.instrument_store import InstrumentStore
 from utils.music_theory import CHROMATIC_SHARPS
 from utils.theme_manager import ThemeManager
+
+# Safe resolution for Flet button controls across different Flet releases
+ElevatedBtn = getattr(ft, "ElevatedButton", None) or getattr(ft, "FilledButton", None) or getattr(ft, "Button", ft.TextButton)
+TextBtn = getattr(ft, "TextButton", None) or getattr(ft, "Button", ft.Container)
 
 
 class CustomInstrumentDialog(ft.AlertDialog):
@@ -56,8 +65,8 @@ class CustomInstrumentDialog(ft.AlertDialog):
         self.strings_column = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, height=260)
 
         actions = [
-            ft.TextButton("Cancel", on_click=self._close_dialog),
-            ft.ElevatedButton(
+            TextBtn("Cancel", on_click=self._close_dialog),
+            ElevatedBtn(
                 "Save Instrument",
                 icon=ft.Icons.SAVE_ROUNDED,
                 style=ft.ButtonStyle(
@@ -71,7 +80,7 @@ class CustomInstrumentDialog(ft.AlertDialog):
         if existing_profile and existing_profile.is_custom:
             actions.insert(
                 0,
-                ft.TextButton(
+                TextBtn(
                     "Delete",
                     style=ft.ButtonStyle(color=ft.Colors.RED_400),
                     on_click=self._delete_instrument
@@ -169,6 +178,12 @@ class CustomInstrumentDialog(ft.AlertDialog):
         self.string_configs[idx] = StringConfig(string_num=curr.string_num, note_name=curr.note_name, octave=octave)
 
     def _close_dialog(self, e=None) -> None:
+        if self.page and hasattr(self.page, "close"):
+            try:
+                self.page.close(self)
+                return
+            except Exception:
+                pass
         self.open = False
         if self.page:
             self.page.update()

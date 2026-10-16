@@ -17,7 +17,7 @@ class Header(ft.Container):
         self.theme_manager = theme_manager
 
         self.title_text = ft.Text(
-            "FRET TRAIN",
+            "BRAGI",
             size=22,
             weight=ft.FontWeight.BOLD,
             color=ft.Colors.AMBER_400,
