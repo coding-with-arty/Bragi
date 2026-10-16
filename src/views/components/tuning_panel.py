@@ -1,70 +1,111 @@
-# src/views/components/tuning_panel.py
-import flet as ft
-from typing import List, Tuple, Callable
+"""
+src/views/components/tuning_panel.py
+====================================
+Streamlined sidebar component for custom per-string tuning.
+Hides octave complexity from beginners while maintaining underlying pitch calculation accuracy.
+"""
 
-class TuningPanel(ft.Column):
-    """
-    Dynamic interface for editing individual string tunings.
-    Provides Dropdowns for note names and octaves per string.
-    """
+from typing import Callable, List, Tuple, Optional
+import flet as ft
+from utils.music_theory import CHROMATIC_SHARPS
+from utils.theme_manager import ThemeManager
+
+
+class TuningPanel(ft.Container):
+    """Clean, beginner-friendly sidebar panel for note-only custom tuning adjustments."""
+
     def __init__(
         self,
         initial_tuning: List[Tuple[str, int]],
-        on_tuning_changed: Callable[[List[Tuple[str, int]]], None]
+        on_tuning_changed: Optional[Callable[[List[Tuple[str, int]]], None]] = None,
+        theme_manager: Optional[ThemeManager] = None,
     ):
         super().__init__()
-        self.current_tuning = initial_tuning
+        self.tuning = list(initial_tuning)
         self.on_tuning_changed = on_tuning_changed
-        self.spacing = 8
-        self.notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        self._build_ui()
+        self.theme_manager = theme_manager
 
-    def _build_ui(self):
-        self.controls.clear()
+        self.border_radius = 12
+        self.padding = 12
+        self.bgcolor = "#231F2D"
+        self.border = ft.Border.all(1, "#3E354A")
 
-        for i, (note, octave) in enumerate(self.current_tuning):
-            string_num = i + 1
+        self.title_text = ft.Text(
+            "CUSTOM TUNING", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.AMBER_400
+        )
 
-            # Instantiate without the event kwarg to bypass validation errors
+        self.strings_column = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO)
+
+        self.content = ft.Column(
+            tight=True,
+            spacing=8,
+            controls=[
+                ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.TUNE_ROUNDED, size=18, color=ft.Colors.AMBER_400),
+                        self.title_text,
+                    ],
+                    spacing=8,
+                ),
+                ft.Divider(height=1, color="#3E354A"),
+                self.strings_column,
+            ],
+        )
+
+        self._render_tuning_rows()
+
+    def _render_tuning_rows(self) -> None:
+        """Renders per-string note pickers with automatic octave preservation."""
+        rows = []
+        for idx, (note, octave) in enumerate(self.tuning):
+            string_num = idx + 1
+
+            # Clean full-width note name selector
             note_dd = ft.Dropdown(
                 value=note,
-                options=[ft.DropdownOption(n) for n in self.notes],
-                width=70,
+                options=[ft.DropdownOption(key=n, text=n) for n in CHROMATIC_SHARPS],
                 dense=True,
-                content_padding=ft.Padding(10, 0, 10, 0)
+                data=idx,
+                expand=True,
+                on_select=self._on_note_changed,
             )
-            # Bind the event listener post-initialization
-            note_dd.on_change = lambda e, idx=i: self._update_tuning_note(idx, e.control.value)
 
-            octave_dd = ft.Dropdown(
-                value=str(octave),
-                options=[ft.DropdownOption(str(o)) for o in range(0, 9)],
-                width=70,
-                dense=True,
-                content_padding=ft.Padding(10, 0, 10, 0)
+            row = ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=8,
+                controls=[
+                    ft.Text(
+                        f"String {string_num}:",
+                        size=12,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.GREY_300,
+                        width=65,
+                    ),
+                    note_dd,
+                ],
             )
-            octave_dd.on_change = lambda e, idx=i: self._update_tuning_octave(idx, int(e.control.value))
+            rows.append(row)
 
-            row = ft.Row([
-                ft.Text(f"Str {string_num}", width=40, size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_400),
-                note_dd,
-                octave_dd
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        self.strings_column.controls = rows
 
-            self.controls.append(row)
+    def _on_note_changed(self, e) -> None:
+        """Updates note pitch class while preserving string's octave index."""
+        idx = e.control.data
+        new_note = e.control.value
+        existing_octave = self.tuning[idx][1]
 
-    def _update_tuning_note(self, index: int, new_note: str):
-        _, octave = self.current_tuning[index]
-        self.current_tuning[index] = (new_note, octave)
-        self.on_tuning_changed(self.current_tuning)
+        # Preserve the existing octave for this string position
+        self.tuning[idx] = (new_note, existing_octave)
 
-    def _update_tuning_octave(self, index: int, new_octave: int):
-        note, _ = self.current_tuning[index]
-        self.current_tuning[index] = (note, new_octave)
-        self.on_tuning_changed(self.current_tuning)
+        if self.on_tuning_changed:
+            self.on_tuning_changed(self.tuning)
 
-    def update_tuning_externally(self, new_tuning: List[Tuple[str, int]]):
-        """Called by parent when a preset is selected or string count changes."""
-        self.current_tuning = new_tuning
-        self._build_ui()
-        self.update()
+    def update_tuning_externally(self, new_tuning: List[Tuple[str, int]]) -> None:
+        """Updates internal tuning state and re-renders sidebar rows."""
+        self.tuning = list(new_tuning)
+        self._render_tuning_rows()
+        try:
+            self.update()
+        except RuntimeError:
+            pass

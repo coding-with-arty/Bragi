@@ -23,7 +23,6 @@ class CustomInstrumentDialog(ft.AlertDialog):
         self.theme_manager = theme_manager
         self.editing_profile = existing_profile
 
-        # Default string count
         initial_string_count = existing_profile.string_count if existing_profile else 6
         initial_name = existing_profile.name if existing_profile else "My Custom Instrument"
 
@@ -40,7 +39,7 @@ class CustomInstrumentDialog(ft.AlertDialog):
             options=[ft.DropdownOption(key=str(i), text=f"{i} Strings") for i in range(1, 11)],
             width=140,
             dense=True,
-            on_change=self._on_string_count_changed,
+            on_select=self._on_string_count_changed,
         )
 
         self.string_configs: List[StringConfig] = (
@@ -118,7 +117,7 @@ class CustomInstrumentDialog(ft.AlertDialog):
                 width=110,
                 dense=True,
                 data=idx,
-                on_change=self._on_note_changed,
+                on_select=self._on_note_changed,
             )
 
             octave_dd = ft.Dropdown(
@@ -128,7 +127,7 @@ class CustomInstrumentDialog(ft.AlertDialog):
                 width=110,
                 dense=True,
                 data=idx,
-                on_change=self._on_octave_changed,
+                on_select=self._on_octave_changed,
             )
 
             row = ft.Row(
@@ -196,5 +195,5 @@ class CustomInstrumentDialog(ft.AlertDialog):
     def _delete_instrument(self, e=None) -> None:
         if self.editing_profile and self.editing_profile.is_custom:
             self.store.delete_custom_instrument(self.editing_profile.id)
-            self.on_instrument_saved(BUILTIN_PROFILES[0])
+            self.on_instrument_saved(self.store.get_all_profiles()[0])
         self._close_dialog()
