@@ -6,6 +6,7 @@ import flet as ft
 from utils.responsive import ResponsiveLayout, DeviceType
 from utils.theme_manager import ThemeManager
 from storage.progress_repository import ProgressRepository
+from services.audio_manager import AudioManager
 from views.trainer_view import TrainerView
 from views.subviews.tuner_view import TunerView
 from views.subviews.ear_training_view import EarTrainingView
@@ -30,6 +31,9 @@ class AppLayout(ft.Container):
         self.theme_manager = theme_manager or ThemeManager(page)
         self.repository = repository or ProgressRepository()
         self.expand = True
+
+        # Start master audio listening stream continuously
+        AudioManager.get_instance().start_listening()
 
         # Resolve asset background
         assets_dir = Path(__file__).parent.parent / "assets"
@@ -258,8 +262,12 @@ class AppLayout(ft.Container):
         self.bottom_nav.selected_index = idx
         self.side_rail.selected_index = idx
 
-        self.body_container.content = self.views[self.current_index]
+        new_view = self.views[self.current_index]
+        self.body_container.content = new_view
         self.main_page.update()
+
+        if hasattr(new_view, "did_mount"):
+            new_view.did_mount()
 
         if self.current_index == 3 and hasattr(self.progress_view, "refresh_stats"):
             self.progress_view.refresh_stats()

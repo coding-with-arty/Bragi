@@ -1,253 +1,212 @@
 """
 src/views/subviews/tuner_view.py
 ================================
-Interactive Chromatic Instrument Tuner with Cents Deviation Needle Gauge,
-Frequency readout, Signal Stability metrics, and String Preset targets.
+Real-time Chromatic Tuner Subview binding directly to global AudioManager
+events for pitch detection, frequency readout (Hz), cents error needle, and string status.
 """
 
+import asyncio
 import math
 from typing import Optional
 import flet as ft
+
 from services.audio_manager import AudioManager
 from utils.theme_manager import ThemeManager
 
+NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
 
 class TunerView(ft.Container):
-    """Chromatic Instrument Tuner view connected to the shared Audio Manager."""
+    """Real-time Chromatic Tuner visualizer fed by central AudioManager pitch events."""
 
     def __init__(self, theme_manager: Optional[ThemeManager] = None):
         super().__init__()
         self.theme_manager = theme_manager
-        self.audio_manager = AudioManager.get_instance()
         self.expand = True
-        self.padding = ft.Padding.all(16)
+        self.padding = ft.Padding.all(20)
+        self._is_mounted = False
 
-        # Active Tuning Mode
-        self.current_mode = "Guitar"
-        self.modes = {
-            "Guitar": [("E2", 82.4), ("A2", 110.0), ("D3", 146.8), ("G3", 196.0), ("B3", 246.9), ("E4", 329.6)],
-            "Bass": [("E1", 41.2), ("A1", 55.0), ("D2", 73.4), ("G2", 98.0)],
-            "Ukulele": [("G4", 392.0), ("C4", 261.6), ("E4", 329.6), ("A4", 440.0)],
-            "Chromatic": [],
-        }
-
-        # Header Mode Selectors
-        self.mode_row = ft.Row(spacing=8, alignment=ft.MainAxisAlignment.CENTER)
-
-        # Display Readouts
-        self.pitch_text = ft.Text("--", size=64, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)
-        self.freq_text = ft.Text("0.0 Hz", size=16, color=ft.Colors.GREY_400)
-        self.status_text = ft.Text("START LISTENING TO TUNE", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_500)
-
-        # Cents Gauge Controls
-        self.cents_indicator_bar = ft.Container(
-            width=6,
-            height=32,
-            bgcolor=ft.Colors.GREY_600,
-            border_radius=3,
+        # Tuner UI Elements
+        self.note_text = ft.Text(
+            "--",
+            size=72,
+            weight=ft.FontWeight.BOLD,
+            color=ft.Colors.WHITE,
+            text_align=ft.TextAlign.CENTER,
         )
+
+        self.freq_text = ft.Text(
+            "0.0 Hz",
+            size=18,
+            color=ft.Colors.GREY_400,
+            weight=ft.FontWeight.W_500,
+        )
+
+        self.status_badge = ft.Container(
+            content=ft.Text(
+                "NO SOUND DETECTED",
+                size=12,
+                weight=ft.FontWeight.BOLD,
+                color=ft.Colors.GREY_400,
+            ),
+            bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.GREY_700),
+            border_radius=16,
+            padding=ft.Padding.symmetric(horizontal=16, vertical=6),
+        )
+
+        # Cents Offset Meter (-50 to +50)
+        self.cents_text = ft.Text("0 cents", size=14, color=ft.Colors.GREY_400)
+        self.cents_progress = ft.ProgressBar(value=0.5, color=ft.Colors.AMBER_400, height=8)
+
+        # Visual Tuning Gauge Container
         self.gauge_container = ft.Container(
-            content=ft.Stack(
+            width=360,
+            content=ft.Column(
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=12,
                 controls=[
-                    # Center Line (In-Tune Target)
-                    ft.Container(
-                        left=147,
-                        top=0,
-                        width=6,
-                        height=40,
-                        bgcolor=ft.Colors.GREEN_400,
-                        border_radius=3,
-                    ),
-                    self.cents_indicator_bar,
-                ],
-            ),
-            width=300,
-            height=40,
-            bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.WHITE),
-            border_radius=8,
-            border=ft.Border.all(1, ft.Colors.with_opacity(0.2, "#3E354A")),
-        )
-
-        self.cents_text = ft.Text("0.0 Cents", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_400)
-        self.confidence_progress = ft.ProgressBar(value=0.0, color=ft.Colors.AMBER_400, height=6)
-
-        # Target String Buttons
-        self.string_targets_row = ft.Row(spacing=8, alignment=ft.MainAxisAlignment.CENTER)
-
-        # Audio Toggle Button
-        self.listen_button = ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Icon(ft.Icons.MIC_ROUNDED, size=20, color=ft.Colors.BLACK),
-                    ft.Text("Start Listening", weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK),
-                ],
-                tight=True,
-                spacing=8,
-            ),
-            bgcolor=ft.Colors.AMBER_400,
-            border_radius=10,
-            padding=ft.Padding.symmetric(horizontal=24, vertical=12),
-            ink=True,
-            on_click=self._toggle_listening,
-        )
-
-        # Assemble View Card
-        self.content = ft.Column(
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            alignment=ft.MainAxisAlignment.CENTER,
-            spacing=20,
-            scroll=ft.ScrollMode.AUTO,
-            controls=[
-                self.mode_row,
-                ft.Container(
-                    content=ft.Column(
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=12,
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         controls=[
-                            self.pitch_text,
-                            self.freq_text,
-                            self.status_text,
-                            self.gauge_container,
-                            self.cents_text,
-                            ft.Container(width=200, content=self.confidence_progress),
+                            ft.Text("-50", size=11, color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD),
+                            ft.Text("FLAT", size=10, color=ft.Colors.GREY_500),
+                            ft.Text("IN TUNE", size=10, color=ft.Colors.GREEN_400, weight=ft.FontWeight.BOLD),
+                            ft.Text("SHARP", size=10, color=ft.Colors.GREY_500),
+                            ft.Text("+50", size=11, color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD),
                         ],
                     ),
-                    bgcolor=ft.Colors.with_opacity(0.25, "#130F1C"),
-                    border=ft.Border.all(1, ft.Colors.with_opacity(0.2, "#3E354A")),
-                    border_radius=16,
-                    padding=24,
-                    width=380,
-                ),
-                self.string_targets_row,
-                self.listen_button,
-            ],
+                    self.cents_progress,
+                    self.cents_text,
+                ],
+            ),
+            bgcolor=ft.Colors.with_opacity(0.12, "#130F1C"),
+            border=ft.Border.all(1, ft.Colors.with_opacity(0.25, "#3E354A")),
+            border_radius=16,
+            padding=18,
         )
 
-        self._render_mode_pills()
-        self._render_string_targets()
-
-    def did_mount(self) -> None:
-        self.audio_manager.subscribe(self._on_audio_update)
-        if not self.audio_manager.is_listening:
-            self.audio_manager.start_listening()
-        self.listen_button.content.controls[1].value = "Stop Listening"
-        self.listen_button.bgcolor = ft.Colors.RED_400
-        try:
-            self.update()
-        except Exception:
-            pass
-
-    def will_unmount(self) -> None:
-        self.audio_manager.unsubscribe(self._on_audio_update)
-
-    def _render_mode_pills(self) -> None:
-        pills = []
-        for mode in self.modes.keys():
-            active = mode == self.current_mode
-            btn = ft.Container(
-                content=ft.Text(
-                    mode,
-                    size=12,
-                    weight=ft.FontWeight.BOLD if active else ft.FontWeight.NORMAL,
-                    color=ft.Colors.BLACK if active else ft.Colors.WHITE,
-                ),
-                bgcolor=ft.Colors.AMBER_400 if active else ft.Colors.with_opacity(0.12, ft.Colors.WHITE),
-                border_radius=8,
-                padding=ft.Padding.symmetric(horizontal=14, vertical=8),
-                ink=True,
-                data=mode,
-                on_click=self._on_mode_selected,
-            )
-            pills.append(btn)
-        self.mode_row.controls = pills
-
-    def _render_string_targets(self) -> None:
-        targets = self.modes.get(self.current_mode, [])
-        controls = []
-        for note, freq in targets:
-            btn = ft.Container(
+        # Target Reference Strings (Standard EADGBE)
+        standard_strings = [
+            ("E2", "82.4 Hz"),
+            ("A2", "110.0 Hz"),
+            ("D3", "146.8 Hz"),
+            ("G3", "196.0 Hz"),
+            ("B3", "246.9 Hz"),
+            ("E4", "329.6 Hz"),
+        ]
+        string_badges = [
+            ft.Container(
                 content=ft.Column(
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     spacing=2,
                     controls=[
-                        ft.Text(note, weight=ft.FontWeight.BOLD, size=13, color=ft.Colors.WHITE),
-                        ft.Text(f"{freq:.0f}Hz", size=10, color=ft.Colors.GREY_400),
+                        ft.Text(note, size=13, weight=ft.FontWeight.BOLD),
+                        ft.Text(hz, size=9, color=ft.Colors.GREY_400),
                     ],
                 ),
-                bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.WHITE),
+                bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
                 border_radius=8,
-                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                padding=ft.Padding.symmetric(horizontal=12, vertical=6),
             )
-            controls.append(btn)
-        self.string_targets_row.controls = controls
+            for note, hz in standard_strings
+        ]
 
-    def _on_mode_selected(self, e) -> None:
-        self.current_mode = e.control.data
-        self._render_mode_pills()
-        self._render_string_targets()
-        try:
-            self.update()
-        except Exception:
-            pass
+        self.string_reference_row = ft.Row(
+            controls=string_badges,
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=8,
+        )
 
-    def _toggle_listening(self, e) -> None:
-        if self.audio_manager.is_listening:
-            self.audio_manager.stop_listening()
-            self.listen_button.content.controls[1].value = "Start Listening"
-            self.listen_button.bgcolor = ft.Colors.AMBER_400
-        else:
-            self.audio_manager.start_listening()
-            self.listen_button.content.controls[1].value = "Stop Listening"
-            self.listen_button.bgcolor = ft.Colors.RED_400
+        self.content = ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=20,
+            controls=[
+                ft.Text("Chromatic Tuner", size=22, weight=ft.FontWeight.BOLD),
+                ft.Container(
+                    content=ft.Column(
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=8,
+                        controls=[
+                            self.note_text,
+                            self.freq_text,
+                            self.status_badge,
+                        ],
+                    ),
+                    padding=20,
+                ),
+                self.gauge_container,
+                ft.Divider(height=1, color=ft.Colors.with_opacity(0.2, "#3E354A")),
+                ft.Text("Standard Reference Pitches", size=12, color=ft.Colors.GREY_400),
+                self.string_reference_row,
+            ],
+        )
 
-        try:
-            self.update()
-        except Exception:
-            pass
+    def did_mount(self):
+        """Lifecycle hook: Launches active asyncio UI update loop on Flet's event loop."""
+        self._is_mounted = True
+        am = AudioManager.get_instance()
+        am.start_listening()
+        asyncio.create_task(self._live_ui_loop())
 
-    def _on_audio_update(self, data: dict) -> None:
-        """Processes live audio payloads and updates needle position and color state."""
-        note = data.get("pitch_class", "--")
-        octave = data.get("octave", 0)
+    def will_unmount(self):
+        """Lifecycle hook: Stops continuous UI loop when navigating away."""
+        self._is_mounted = False
+
+    async def _live_ui_loop(self):
+        """Continuous asyncio loop running on Flet's main event loop (~25 FPS)."""
+        am = AudioManager.get_instance()
+        while self._is_mounted:
+            state = am.current_state
+            self._render_state(state)
+            if self.page:
+                try:
+                    self.update()
+                except Exception:
+                    pass
+            await asyncio.sleep(0.04)
+
+    def _render_state(self, data: dict):
+        """Updates internal UI control values based on latest pitch state."""
+        pitch_class = data.get("pitch_class", "--")
         freq = data.get("frequency", 0.0)
         cents = data.get("cents_deviation", 0.0)
-        confidence = data.get("confidence", 0.0)
-        direction = data.get("direction", "NO SIGNAL")
+        octave = data.get("octave", 0)
 
-        if note != "--":
-            self.pitch_text.value = f"{note}{octave}"
-            self.freq_text.value = f"{freq:.1f} Hz"
-            self.cents_text.value = f"{cents:+.1f} Cents"
-            self.confidence_progress.value = min(1.0, max(0.0, confidence))
-
-            abs_cents = abs(cents)
-            if abs_cents <= 5.0:
-                color = ft.Colors.GREEN_400
-            elif abs_cents <= 20.0:
-                color = ft.Colors.AMBER_400
-            else:
-                color = ft.Colors.RED_400
-
-            self.pitch_text.color = color
-            self.status_text.value = direction
-            self.status_text.color = color
-            self.cents_indicator_bar.bgcolor = color
-
-            clamped_cents = max(-50.0, min(50.0, cents))
-            left_pos = 147 + (clamped_cents / 50.0) * 140
-            self.cents_indicator_bar.left = left_pos
-        else:
-            self.pitch_text.value = "--"
-            self.pitch_text.color = ft.Colors.WHITE
+        if pitch_class == "--" or freq <= 20.0:
+            self.note_text.value = "--"
             self.freq_text.value = "0.0 Hz"
-            self.cents_text.value = "0.0 Cents"
-            self.status_text.value = "NO SIGNAL DETECTED" if self.audio_manager.is_listening else "START LISTENING TO TUNE"
-            self.status_text.color = ft.Colors.GREY_500
-            self.cents_indicator_bar.bgcolor = ft.Colors.GREY_600
-            self.cents_indicator_bar.left = 147
-            self.confidence_progress.value = 0.0
+            self.status_badge.content.value = "NO SOUND DETECTED"
+            self.status_badge.bgcolor = ft.Colors.with_opacity(0.15, ft.Colors.GREY_700)
+            self.status_badge.content.color = ft.Colors.GREY_400
+            self.cents_progress.value = 0.5
+            self.cents_progress.color = ft.Colors.GREY_600
+            self.cents_text.value = "0 cents"
+        else:
+            cents_clamped = max(-50.0, min(50.0, cents))
+            norm_progress = (cents_clamped + 50.0) / 100.0
+            is_in_tune = data.get("is_in_tune", abs(cents_clamped) <= 10.0)
 
-        try:
-            self.update()
-        except Exception:
-            pass
+            self.note_text.value = f"{pitch_class}{octave}"
+            self.freq_text.value = f"{freq:.1f} Hz"
+            self.cents_text.value = f"{cents_clamped:+.1f} cents"
+            self.cents_progress.value = norm_progress
+
+            if is_in_tune:
+                self.status_badge.content.value = "IN TUNE"
+                self.status_badge.bgcolor = ft.Colors.GREEN_400
+                self.status_badge.content.color = ft.Colors.BLACK
+                self.cents_progress.color = ft.Colors.GREEN_400
+                self.note_text.color = ft.Colors.GREEN_400
+            elif cents_clamped < 0:
+                self.status_badge.content.value = "FLAT (TOO LOW)"
+                self.status_badge.bgcolor = ft.Colors.with_opacity(0.2, ft.Colors.AMBER_400)
+                self.status_badge.content.color = ft.Colors.AMBER_400
+                self.cents_progress.color = ft.Colors.AMBER_400
+                self.note_text.color = ft.Colors.WHITE
+            else:
+                self.status_badge.content.value = "SHARP (TOO HIGH)"
+                self.status_badge.bgcolor = ft.Colors.with_opacity(0.2, ft.Colors.RED_400)
+                self.status_badge.content.color = ft.Colors.RED_400
+                self.cents_progress.color = ft.Colors.RED_400
+                self.note_text.color = ft.Colors.WHITE

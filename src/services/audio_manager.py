@@ -1,8 +1,8 @@
 """
 src/services/audio_manager.py
 ==============================
-Centralized audio management service responsible for hardware device enumeration,
-low-latency audio capture via PitchDetector, pitch analysis, and cross-view notification broadcasting.
+Centralized audio management service handling singleton hardware capture,
+pitch analysis, device enumeration, and cross-view notification broadcasting.
 """
 
 import json
@@ -11,11 +11,9 @@ import threading
 import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
-import flet as ft
 
 from audio.pitch_detector import PitchDetector, list_input_devices
 
-# Pitch Constants
 A4_FREQ = 440.0
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -44,16 +42,24 @@ class AudioManager:
         self.current_device_id = saved_id if saved_id is not None else "default"
         self.listeners: List[Callable[[Dict], None]] = []
 
-        # Pitch Detector Instance & Polling State
-        self.detector = PitchDetector()
+        target_id = None
+        if self.current_device_id is not None and str(self.current_device_id) != "default":
+            try:
+                target_id = int(self.current_device_id)
+            except ValueError:
+                target_id = None
+
+        # Singleton Pitch Detector with -65dB silence floor and 0.3 confidence threshold
+        self.detector = PitchDetector(
+            silence_threshold_db=-65.0,
+            confidence_threshold=0.3,
+            device=target_id,
+        )
         self._poll_thread: Optional[threading.Thread] = None
         self._stop_polling = threading.Event()
+        self._last_pitch_time = 0.0
 
-        # Set initial device on detector
-        target_id = int(self.current_device_id) if (self.current_device_id is not None and str(self.current_device_id) != "default") else None
-        self.detector.set_device(target_id)
-
-        # Current Pitch Detection State
+        # Current Pitch State
         self.current_state = {
             "pitch_class": "--",
             "octave": 0,
@@ -65,7 +71,10 @@ class AudioManager:
             "is_in_tune": False,
             "direction": "NO SIGNAL",
             "raw_chords": [],
+            "pitch_data": None,
         }
+
+        self.start_listening()
 
     def _load_persisted_device(self):
         if self.config_path.exists():
@@ -80,7 +89,7 @@ class AudioManager:
     def _persist_device(self, device_id) -> None:
         try:
             with open(self.config_path, "w") as f:
-                json.dump({"device_id": device_id}, f)
+                json.dump({"device_id": str(device_id)}, f)
         except Exception:
             pass
 
@@ -116,7 +125,13 @@ class AudioManager:
         self.current_device_id = device_id
         self._persist_device(device_id)
 
-        target_id = int(device_id) if (device_id is not None and str(device_id) != "default") else None
+        target_id = None
+        if device_id is not None and str(device_id) != "default":
+            try:
+                target_id = int(device_id)
+            except ValueError:
+                target_id = None
+
         self.detector.set_device(target_id)
 
         self.broadcast_state({
@@ -141,77 +156,86 @@ class AudioManager:
             except Exception:
                 pass
 
-    def process_frequency(self, frequency: float, confidence: float = 0.95) -> Dict:
-        """Calculates chromatic pitch, target frequency, cents deviation, and tuning direction."""
-        if frequency <= 20.0 or confidence < 0.15:
-            self.current_state = {
-                "pitch_class": "--",
-                "octave": 0,
-                "frequency": 0.0,
-                "target_note": "--",
-                "target_freq": 0.0,
-                "cents_deviation": 0.0,
-                "confidence": 0.0,
-                "is_in_tune": False,
-                "direction": "NO SIGNAL",
-                "raw_chords": [],
-            }
-            self.broadcast_state()
-            return self.current_state
-
-        midi_num = 69 + 12 * math.log2(frequency / A4_FREQ)
-        nearest_midi = round(midi_num)
-        target_freq = A4_FREQ * (2 ** ((nearest_midi - 69) / 12))
-
-        cents = (midi_num - nearest_midi) * 100.0
-        note_index = nearest_midi % 12
-        pitch_name = NOTE_NAMES[note_index]
-        octave = (nearest_midi // 12) - 1
-
-        is_in_tune = abs(cents) <= 5.0
-        direction = "IN TUNE" if is_in_tune else ("TOO SHARP" if cents > 0 else "TOO FLAT")
-
-        self.current_state = {
-            "pitch_class": pitch_name,
-            "octave": octave,
-            "frequency": round(frequency, 1),
-            "target_note": f"{pitch_name}{octave}",
-            "target_freq": round(target_freq, 1),
-            "cents_deviation": round(cents, 1),
-            "confidence": confidence,
-            "is_in_tune": is_in_tune,
-            "direction": direction,
-            "raw_chords": [],
-        }
-
-        self.broadcast_state()
-        return self.current_state
-
     def start_listening(self) -> None:
-        """Starts the audio pitch detector and background polling thread."""
-        if self.is_listening:
+        """Starts hardware microphone capture and polling thread."""
+        if self.is_listening and self.detector._is_running:
             return
         self.is_listening = True
         self._stop_polling.clear()
-        self.detector.start()
+        try:
+            self.detector.start()
+        except Exception:
+            pass
 
-        self._poll_thread = threading.Thread(target=self._polling_loop, daemon=True)
-        self._poll_thread.start()
+        if self._poll_thread is None or not self._poll_thread.is_alive():
+            self._poll_thread = threading.Thread(target=self._polling_loop, daemon=True)
+            self._poll_thread.start()
 
     def stop_listening(self) -> None:
-        """Stops background pitch polling and halts detector."""
+        """Halts hardware microphone capture."""
         self.is_listening = False
         self._stop_polling.set()
         self.detector.stop()
-        self.process_frequency(0.0, 0.0)
 
     def _polling_loop(self) -> None:
-        """Background loop fetching latest pitch data from PitchDetector."""
+        """Dedicated Python thread polling PitchDetector queue at ~40 FPS with 0.4s hold."""
         while not self._stop_polling.is_set() and self.is_listening:
-            pdata = self.detector.get_latest(block=False)
-            if pdata and pdata.frequency > 20.0:
-                conf = 0.95 if getattr(pdata, "db_level", -30.0) > -50.0 else 0.2
-                self.process_frequency(pdata.frequency, confidence=conf)
-            elif pdata is None or pdata.frequency <= 20.0:
-                self.process_frequency(0.0, 0.0)
-            time.sleep(0.03)
+            latest_pdata = None
+            # Drain queue to obtain the single most recent audio frame
+            while True:
+                pdata = self.detector.get_latest(block=False)
+                if pdata is None:
+                    break
+                latest_pdata = pdata
+
+            now = time.time()
+
+            if latest_pdata is not None:
+                freq = latest_pdata.frequency
+                conf = latest_pdata.confidence
+
+                if freq > 20.0 and not latest_pdata.is_silent and conf >= 0.15:
+                    self._last_pitch_time = now
+                    midi_num = 69 + 12 * math.log2(freq / A4_FREQ)
+                    nearest_midi = round(midi_num)
+                    target_freq = A4_FREQ * (2 ** ((nearest_midi - 69) / 12))
+
+                    cents = (midi_num - nearest_midi) * 100.0
+                    note_index = nearest_midi % 12
+                    pitch_name = NOTE_NAMES[note_index]
+                    octave = (nearest_midi // 12) - 1
+
+                    is_in_tune = abs(cents) <= 5.0
+                    direction = "IN TUNE" if is_in_tune else ("TOO SHARP" if cents > 0 else "TOO FLAT")
+
+                    self.current_state = {
+                        "pitch_class": pitch_name,
+                        "octave": octave,
+                        "frequency": round(freq, 1),
+                        "target_note": f"{pitch_name}{octave}",
+                        "target_freq": round(target_freq, 1),
+                        "cents_deviation": round(cents, 1),
+                        "confidence": conf,
+                        "is_in_tune": is_in_tune,
+                        "direction": direction,
+                        "raw_chords": [],
+                        "pitch_data": latest_pdata,
+                    }
+                    self.broadcast_state()
+                elif now - self._last_pitch_time > 0.4:
+                    self.current_state = {
+                        "pitch_class": "--",
+                        "octave": 0,
+                        "frequency": 0.0,
+                        "target_note": "--",
+                        "target_freq": 0.0,
+                        "cents_deviation": 0.0,
+                        "confidence": 0.0,
+                        "is_in_tune": False,
+                        "direction": "NO SIGNAL",
+                        "raw_chords": [],
+                        "pitch_data": latest_pdata,
+                    }
+                    self.broadcast_state()
+
+            time.sleep(0.025)  # 25ms interval (~40 FPS)

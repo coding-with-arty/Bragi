@@ -35,9 +35,9 @@ class AudioSettings(BaseModel):
     buffer_size: int = Field(2048, ge=512, le=8192, description="FFT buffer size in frames")
     hop_size: int = Field(1024, ge=128, le=4096, description="Hop size between DSP frames")
     tolerance_cents: float = Field(25.0, ge=5.0, le=50.0, description="Pitch error tolerance in cents")
-    min_volume_db: float = Field(-50.0, ge=-90.0, le=0.0, description="Silence threshold in dBFS")
-    hold_duration_sec: float = Field(0.20, ge=0.05, le=2.0, description="Required match hold duration")
-    arpeggio_window_sec: float = Field(2.0, ge=0.5, le=5.0, description="Accumulator memory duration")
+    min_volume_db: float = Field(-65.0, ge=-90.0, le=0.0, description="Silence threshold in dBFS")
+    hold_duration_sec: float = Field(0.08, ge=0.01, le=2.0, description="Required match hold duration")
+    arpeggio_window_sec: float = Field(3.5, ge=0.5, le=10.0, description="Accumulator memory duration")
     device_id: Optional[int] = Field(None, description="Selected input device index or None for default")
 
 

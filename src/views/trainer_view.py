@@ -24,7 +24,6 @@ from utils.music_theory import MusicTheory
 from utils.theme_manager import ThemeManager
 from utils.timer_manager import TrainerTimer
 
-from audio.pitch_detector import PitchDetector
 from audio.audio_worker import AudioWorker
 from services.audio_manager import AudioManager
 
@@ -54,8 +53,8 @@ class TrainerView(ft.Column):
         self.current_target_note = "E"
         self.current_target_octave = 2
 
-        # Audio Engine Setup
-        self.detector = PitchDetector()
+        # Audio Engine Setup - Share singleton PitchDetector from AudioManager
+        self.detector = AudioManager.get_instance().detector
         self.worker = AudioWorker(
             pitch_detector=self.detector,
             settings=self.settings,
@@ -183,16 +182,28 @@ class TrainerView(ft.Column):
         self.apply_theme()
 
     def did_mount(self):
+        self._is_mounted = True
         self.apply_instrument_profile(self.active_profile)
         AudioManager.get_instance().subscribe(self._on_audio_manager_update)
         self._sync_audio_device()
-        self.detector.start()
+        AudioManager.get_instance().start_listening()
         self.worker.start()
+        asyncio.create_task(self._live_trainer_ui_loop())
 
     def will_unmount(self):
+        self._is_mounted = False
         AudioManager.get_instance().unsubscribe(self._on_audio_manager_update)
         self.worker.stop()
-        self.detector.stop()
+
+    async def _live_trainer_ui_loop(self):
+        """Main-thread UI loop pushing pitch feedback to Trainer controls (~25 FPS)."""
+        while self._is_mounted:
+            if self.page:
+                try:
+                    self.update()
+                except Exception:
+                    pass
+            await asyncio.sleep(0.04)
 
     def _sync_audio_device(self):
         dev_id = AudioManager.get_instance().current_device_id

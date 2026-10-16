@@ -33,6 +33,7 @@ class AudioWorker:
         self._on_chord_matched = on_chord_matched
         self._on_chord_pitch_update = on_chord_pitch_update
 
+        # Relaxed match hold duration (0.08s) for instant chord completion
         self.note_evaluator = NoteEvaluator(
             tolerance_cents=self._settings.audio_settings.tolerance_cents,
             min_volume_db=self._settings.audio_settings.min_volume_db,
@@ -44,6 +45,7 @@ class AudioWorker:
             validation_mode=self._settings.validation_mode,
         )
 
+        # Extended memory duration (3.5s) for arpeggio accumulation
         self.arpeggio_buffer = ArpeggioBuffer(
             window_duration_sec=self._settings.audio_settings.arpeggio_window_sec
         )
@@ -120,24 +122,14 @@ class AudioWorker:
             else:
                 self._process_chord_mode()
 
-            time.sleep(0.01)
+            time.sleep(0.015)
 
     def _process_note_mode(self) -> None:
-        if not hasattr(self._pitch_detector, "get_latest"):
-            return
-
-        pdata = self._pitch_detector.get_latest(block=False)
-        if pdata is None:
-            return
-
-        # Forward live pitch data to global AudioManager for Tuner and other subscribers
         from services.audio_manager import AudioManager
         am = AudioManager.get_instance()
-        if pdata.frequency > 20.0:
-            conf = 0.95 if getattr(pdata, "db_level", -30.0) > -50.0 else 0.2
-            am.process_frequency(pdata.frequency, confidence=conf)
-        else:
-            am.process_frequency(0.0, 0.0)
+        pdata = am.current_state.get("pitch_data")
+        if pdata is None:
+            return
 
         pitch_payload, match_statement = self.note_evaluator.evaluate_frame(
             frequency=pdata.frequency,
@@ -160,10 +152,9 @@ class AudioWorker:
                 sys.stderr.write(f"[AudioWorker] Note match callback error: {err}\n")
 
     def _process_chord_mode(self) -> None:
-        if not hasattr(self._pitch_detector, "get_latest"):
-            return
-
-        pdata = self._pitch_detector.get_latest(block=False)
+        from services.audio_manager import AudioManager
+        am = AudioManager.get_instance()
+        pdata = am.current_state.get("pitch_data")
         if pdata is None or pdata.raw_signal is None:
             return
 

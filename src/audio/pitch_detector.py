@@ -137,9 +137,9 @@ class PitchDetector:
         sample_rate: int = 44100,
         buffer_size: int = 2048,
         hop_size: int = 1024,
-        silence_threshold_db: float = -45.0,
+        silence_threshold_db: float = -65.0,
         pitch_method: str = "yin",
-        confidence_threshold: float = 0.7,
+        confidence_threshold: float = 0.3,
         stability_window: int = 3,
         device: Optional[int | str] = None,
         callback: Optional[Callable[[PitchData], None]] = None,
@@ -260,7 +260,21 @@ class PitchDetector:
             logger.info("Audio stream started on device %s.", self.device)
         except Exception as err:
             logger.error("Failed to open audio input stream: %s", err)
-            raise err
+            if self.device is not None:
+                logger.warning("Retrying with system default microphone...")
+                self.device = None
+                self._stream = sd.InputStream(
+                    samplerate=self.sample_rate,
+                    blocksize=self.hop_size,
+                    device=None,
+                    channels=1,
+                    dtype="float32",
+                    callback=self._audio_callback,
+                )
+                self._stream.start()
+                self._is_running = True
+            else:
+                raise err
 
     def stop(self) -> None:
         if not self._is_running:
