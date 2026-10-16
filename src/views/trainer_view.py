@@ -8,12 +8,15 @@ from views.components.header import Header
 from views.components.note_display import NoteDisplay
 from views.components.chord_display import ChordDisplay
 from views.components.filter_panel import FilterPanel
+from views.components.fretboard_view import FretboardView
 from views.components.custom_instrument_dialog import CustomInstrumentDialog
 
 from models.settings import TrainerSettings, DetectionMode, PracticeMode
 from models.chord import TargetChord, ChordMatchStatement
 from models.instrument import InstrumentProfile
+from models.progress import AttemptRecord
 from storage.instrument_store import InstrumentStore, BUILTIN_PROFILES
+from storage.progress_repository import ProgressRepository
 from engine.note_evaluator import SingleNoteMatchStatement, EvaluatedPitchPayload
 from engine.chord_generator import ChordGenerator
 
@@ -27,11 +30,12 @@ from services.audio_manager import AudioManager
 
 
 class TrainerView(ft.Column):
-    """Trainer view focusing strictly on practice visualizer and chord/note filter controls."""
+    """Trainer view featuring flashcard display, toggleable fretboard map help, and analytics persistence."""
 
-    def __init__(self, theme_manager: ThemeManager):
+    def __init__(self, theme_manager: ThemeManager, repository: Optional[ProgressRepository] = None):
         super().__init__()
         self.theme_manager = theme_manager
+        self.repository = repository or ProgressRepository()
         self.expand = True
         self._is_transitioning = False
 
@@ -43,9 +47,12 @@ class TrainerView(ft.Column):
         self.current_tuning: List[Tuple[str, int]] = self.active_profile.to_tuning_tuples()
         self.num_strings: int = len(self.current_tuning)
 
-        # Timing State
+        # Practice Metrics & Timing State
         self.timer_duration_sec = 3
         self.auto_advance_enabled = False
+        self.target_start_time = time.time()
+        self.current_target_note = "E"
+        self.current_target_octave = 2
 
         # Audio Engine Setup
         self.detector = PitchDetector()
@@ -78,7 +85,34 @@ class TrainerView(ft.Column):
         )
         self.chord_display.visible = False
 
-        # Sidebar Filter Panel (Dedicated practice filters)
+        # Interactive Fretboard Map (Hidden by default)
+        self.fretboard_view = FretboardView(
+            profile=self.active_profile,
+            visible_frets=15,
+            on_fret_clicked=self._on_fret_clicked,
+            theme_manager=self.theme_manager,
+        )
+        self.fretboard_view.visible = False
+
+        # Help / Hint Toggle Button
+        self.fretboard_help_btn = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Icon(ft.Icons.LIGHTBULB_OUTLINED, size=18, color=ft.Colors.AMBER_400),
+                    ft.Text("Show Fretboard Hint", weight=ft.FontWeight.BOLD, size=12, color=ft.Colors.AMBER_400),
+                ],
+                tight=True,
+                spacing=6,
+            ),
+            bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER_400),
+            border=ft.Border.all(1, ft.Colors.AMBER_400),
+            border_radius=8,
+            padding=ft.Padding.symmetric(horizontal=14, vertical=8),
+            ink=True,
+            on_click=self._toggle_fretboard_help,
+        )
+
+        # Sidebar Filter Panel
         self.filter_panel = FilterPanel(
             settings=self.settings,
             on_settings_changed=self.on_settings_changed,
@@ -99,17 +133,28 @@ class TrainerView(ft.Column):
             height=650,
         )
 
+        # Scrollable Display Column for handling dynamic expansion
+        self.display_column = ft.Column(
+            controls=[
+                self.note_display,
+                self.chord_display,
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[self.fretboard_help_btn],
+                ),
+                self.fretboard_view,
+            ],
+            alignment=ft.MainAxisAlignment.START,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=16,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
         self.display_container = ft.Container(
-            content=ft.Column(
-                controls=[
-                    self.note_display,
-                    self.chord_display,
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER
-            ),
-            alignment=ft.Alignment.CENTER,
+            content=self.display_column,
+            alignment=ft.Alignment.TOP_CENTER,
             padding=10,
+            expand=True,
         )
 
         self.controls = [
@@ -125,12 +170,12 @@ class TrainerView(ft.Column):
                     ft.Container(
                         content=self.display_container,
                         col={"sm": 12, "md": 7, "lg": 8},
-                        alignment=ft.Alignment.CENTER,
+                        alignment=ft.Alignment.TOP_CENTER,
                         padding=10,
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.START,
             )
         ]
 
@@ -158,7 +203,27 @@ class TrainerView(ft.Column):
         if data.get("event") == "device_changed":
             self._sync_audio_device()
 
-    # Handlers for Practice Timing Modal
+    def _toggle_fretboard_help(self, e=None):
+        """Toggles visibility of the interactive fretboard hint map."""
+        self.fretboard_view.visible = not self.fretboard_view.visible
+
+        if self.fretboard_view.visible:
+            self.fretboard_help_btn.content.controls[0].icon = ft.Icons.LIGHTBULB_ROUNDED
+            self.fretboard_help_btn.content.controls[0].color = ft.Colors.BLACK
+            self.fretboard_help_btn.content.controls[1].value = "Hide Fretboard Hint"
+            self.fretboard_help_btn.content.controls[1].color = ft.Colors.BLACK
+            self.fretboard_help_btn.bgcolor = ft.Colors.AMBER_400
+        else:
+            self.fretboard_help_btn.content.controls[0].icon = ft.Icons.LIGHTBULB_OUTLINED
+            self.fretboard_help_btn.content.controls[0].color = ft.Colors.AMBER_400
+            self.fretboard_help_btn.content.controls[1].value = "Show Fretboard Hint"
+            self.fretboard_help_btn.content.controls[1].color = ft.Colors.AMBER_400
+            self.fretboard_help_btn.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.AMBER_400)
+
+        self.update()
+        if self.page:
+            self.page.update()
+
     def set_timer_duration(self, duration_sec: int) -> None:
         self.timer_duration_sec = duration_sec
         self.timer.set_duration(duration_sec)
@@ -177,7 +242,6 @@ class TrainerView(ft.Column):
             self.chord_display.update_progress(0.0, visible=False)
 
     def open_custom_builder(self, e=None):
-        """Opens custom instrument builder dialog."""
         dialog = CustomInstrumentDialog(
             instrument_store=self.instrument_store,
             on_instrument_saved=self.on_custom_instrument_saved,
@@ -193,10 +257,10 @@ class TrainerView(ft.Column):
         self.apply_instrument_profile(profile)
 
     def apply_instrument_profile(self, profile: InstrumentProfile):
-        """Applies InstrumentProfile model to trainer state."""
         self.active_profile = profile
         self.num_strings = profile.string_count
         self.current_tuning = profile.to_tuning_tuples()
+        self.fretboard_view.set_instrument_profile(profile)
 
         self.generate_next_target()
         if self.page:
@@ -204,7 +268,6 @@ class TrainerView(ft.Column):
 
     def apply_theme(self):
         is_dark = self.theme_manager.is_dark()
-
         bg_sidebar = "#1A1721" if is_dark else "#F3F0F8"
         border_col = "#3E354A" if is_dark else "#D0C8DF"
 
@@ -234,10 +297,12 @@ class TrainerView(ft.Column):
                 self.chord_display.update_progress(progress, visible=True)
 
     def on_timer_timeout(self):
+        self._log_attempt_to_repository(is_success=False)
         self.generate_next_target()
 
     def generate_next_target(self, update_page: bool = True):
         self._is_transitioning = False
+        self.target_start_time = time.time()
 
         if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
             active_strings = []
@@ -255,18 +320,51 @@ class TrainerView(ft.Column):
                 })
 
             string_num, base_tuning, base_octave, target_note, target_octave = MusicTheory.generate_random_note(active_strings)
+            self.current_target_note = target_note
+            self.current_target_octave = target_octave
+
             self.note_display.set_target(string_num, base_tuning, target_note)
             self.worker.set_target_note(target_note, octave=target_octave)
+
+            locs = self.fretboard_view.univ_instrument.get_note_coordinates(target_note, target_octave)
+            self.fretboard_view.highlight_locations(locs, color=ft.Colors.AMBER_400, label=target_note)
         else:
             target_chord = ChordGenerator.generate_target(self.settings.chord_filters)
             self.chord_display.set_target_chord(target_chord)
             self.worker.set_target_chord(target_chord)
+            self.fretboard_view.clear_markers()
 
         if self.auto_advance_enabled:
             asyncio.create_task(self.timer.start(self.timer_duration_sec))
 
         if update_page and self.page:
             self.page.update()
+
+    def _on_fret_clicked(self, string_num: int, fret: int, note_name: str, octave: int) -> None:
+        """Handles manual user touch interactions on the fretboard map."""
+        if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
+            is_match = (note_name.upper() == self.current_target_note.upper())
+            self._log_attempt_to_repository(is_success=is_match)
+            if is_match:
+                self.note_display.update_pitch_feedback(f"{note_name}{octave}", 0.0, True)
+                def delayed_advance():
+                    time.sleep(0.5)
+                    self.generate_next_target()
+                if self.page:
+                    self.page.run_thread(delayed_advance)
+
+    def _log_attempt_to_repository(self, is_success: bool) -> None:
+        """Persists exercise attempt data into SQLite for analytics & XP progression."""
+        response_time = max(0.1, time.time() - self.target_start_time)
+        record = AttemptRecord(
+            target_name=self.current_target_note,
+            target_type="note" if self.settings.detection_mode == DetectionMode.NOTE_DETECTION else "chord",
+            is_success=is_success,
+            response_time_sec=round(response_time, 2),
+            cents_error=0.0,
+            timestamp=time.time(),
+        )
+        self.repository.log_attempt(record)
 
     def _on_note_pitch_update(self, data: EvaluatedPitchPayload):
         if not self._is_transitioning and self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
@@ -281,6 +379,7 @@ class TrainerView(ft.Column):
             return
 
         self._is_transitioning = True
+        self._log_attempt_to_repository(is_success=True)
 
         def delayed_advance():
             time.sleep(0.5)
@@ -294,6 +393,7 @@ class TrainerView(ft.Column):
             return
 
         self._is_transitioning = True
+        self._log_attempt_to_repository(is_success=True)
         self.chord_display.update_pitch_feedback(statement.detected_pitch_classes, is_correct=True)
 
         def delayed_advance():

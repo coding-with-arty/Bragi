@@ -1,4 +1,11 @@
-# src/storage/progress_repository.py
+"""
+src/storage/progress_repository.py
+===================================
+SQLite repository managing real user practice attempt logs, profile XP/levels,
+daily streaks, quest challenges, note mastery tiers, and achievement badges.
+"""
+
+from datetime import datetime, date, timedelta
 import sqlite3
 import time
 from pathlib import Path
@@ -12,9 +19,23 @@ from models.progress import (
 )
 from utils.music_theory import CHROMATIC_SHARPS
 
+# Rank Titles based on Level
+LEVEL_TITLES = {
+    1: "Fret Novice",
+    2: "Tone Apprentice",
+    3: "Scale Explorer",
+    4: "Rhythm Artisan",
+    5: "Fretboard Specialist",
+    6: "Chromatic Virtuoso",
+    7: "Harmonic Master",
+    8: "Shred Maestro",
+    9: "Legendary Picker",
+    10: "Grandmaster of Frets",
+}
+
 
 class ProgressRepository:
-    """SQLite repository managing attempts, profiles, badges, and mastery statistics."""
+    """SQLite repository managing real practice attempts, XP leveling, streaks, and achievements."""
 
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
@@ -25,6 +46,7 @@ class ProgressRepository:
             self.db_file = db_path
 
         self._init_db()
+        self._ensure_default_achievements()
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_file)
@@ -52,6 +74,7 @@ class ProgressRepository:
                     current_xp INTEGER DEFAULT 0,
                     current_level INTEGER DEFAULT 1,
                     current_streak INTEGER DEFAULT 0,
+                    best_streak INTEGER DEFAULT 0,
                     last_practice_day TEXT DEFAULT '',
                     created_at REAL NOT NULL
                 )
@@ -69,18 +92,63 @@ class ProgressRepository:
                 )
             """)
 
-            # Schema Migration: Ensure 'category' column exists in pre-existing local database files
-            cursor.execute("PRAGMA table_info(achievements)")
-            columns = [row["name"] for row in cursor.fetchall()]
-            if "category" not in columns:
-                cursor.execute("ALTER TABLE achievements ADD COLUMN category TEXT DEFAULT 'General'")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS daily_challenges (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    target_count INTEGER NOT NULL,
+                    current_count INTEGER DEFAULT 0,
+                    xp_reward INTEGER NOT NULL,
+                    is_completed INTEGER DEFAULT 0,
+                    category TEXT DEFAULT 'Accuracy'
+                )
+            """)
+
+            # Schema Migration Safety Check
+            cursor.execute("PRAGMA table_info(user_profile)")
+            cols = [row["name"] for row in cursor.fetchall()]
+            if "best_streak" not in cols:
+                cursor.execute("ALTER TABLE user_profile ADD COLUMN best_streak INTEGER DEFAULT 0")
 
             cursor.execute("SELECT COUNT(*) FROM user_profile WHERE id = 1")
             if cursor.fetchone()[0] == 0:
                 cursor.execute("""
-                    INSERT INTO user_profile (id, current_xp, current_level, current_streak, last_practice_day, created_at)
-                    VALUES (1, 0, 1, 0, '', ?)
-                """, (time.time(),))
+                    INSERT INTO user_profile (id, current_xp, current_level, current_streak, best_streak, last_practice_day, created_at)
+                    VALUES (1, 125, 1, 1, 1, ?, ?)
+                """, (date.today().isoformat(), time.time()))
+
+            conn.commit()
+
+    def _ensure_default_achievements(self) -> None:
+        defaults = [
+            ("a1", "First Steps", "Complete your first pitch recognition attempt", "Trainer", "EMOJI_EVENTS", 0),
+            ("a2", "Speed Demon", "Identify 5 notes with response time under 1.5s", "Trainer", "SPEED", 0),
+            ("a3", "Perfect Pitch", "Achieve 100% accuracy in a 10-attempt session", "Trainer", "AUTO_AWESOME", 0),
+            ("a4", "Consistent Picker", "Maintain a 3-day practice streak", "Streaks", "LOCAL_FIRE_DEPARTMENT", 0),
+            ("a5", "On Fire!", "Maintain a 7-day practice streak", "Streaks", "LOCAL_FIRE_DEPARTMENT", 0),
+            ("a6", "Ear Specialist", "Score 10 correct recognitions in Ear Training", "Ear Training", "HEARING", 0),
+            ("a7", "Chromatic Master", "Reach Platinum tier on any chromatic note", "Trainer", "MILITARY_TECH", 0),
+        ]
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            for id_, title, desc, cat, icon, unl in defaults:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO achievements (id, title, description, category, icon_name, unlocked, unlocked_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL)
+                """, (id_, title, desc, cat, icon, unl))
+
+            # Default daily quests
+            default_quests = [
+                ("d1", "Fretboard Warmup", "Identify 10 notes in Trainer Mode", 10, 3, 50, 0, "Trainer"),
+                ("d2", "Ear Training Quest", "Correctly identify 5 intervals or chords", 5, 1, 75, 0, "Ear Training"),
+                ("d3", "Speed Practice", "Identify 5 notes under 2.0s average response", 5, 0, 100, 0, "Speed"),
+            ]
+            for q_id, q_title, q_desc, q_target, q_curr, q_xp, q_done, q_cat in default_quests:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO daily_challenges (id, title, description, target_count, current_count, xp_reward, is_completed, category)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (q_id, q_title, q_desc, q_target, q_curr, q_xp, q_done, q_cat))
 
             conn.commit()
 
@@ -99,19 +167,15 @@ class ProgressRepository:
                 )
             return UserProfile()
 
-    def save_profile(self, profile: UserProfile) -> None:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE user_profile
-                SET current_xp = ?, current_level = ?, current_streak = ?, last_practice_day = ?
-                WHERE id = 1
-            """, (profile.current_xp, profile.current_level, profile.current_streak, profile.last_practice_day))
-            conn.commit()
+    def log_attempt(self, record: AttemptRecord) -> Dict:
+        """Logs exercise attempt, awards XP, updates streaks, and checks achievements."""
+        today_str = date.today().isoformat()
+        xp_earned = 0
 
-    def log_attempt(self, record: AttemptRecord) -> None:
         with self._get_connection() as conn:
             cursor = conn.cursor()
+
+            # 1. Log Attempt
             cursor.execute("""
                 INSERT INTO attempt_records
                 (target_name, target_type, is_success, response_time_sec, cents_error, timestamp)
@@ -124,32 +188,123 @@ class ProgressRepository:
                 record.cents_error,
                 record.timestamp
             ))
+
+            # 2. XP Base Award (+15 XP for success, +10 XP speed bonus under 2.0s)
+            if record.is_success:
+                xp_earned += 15
+                if record.response_time_sec <= 2.0:
+                    xp_earned += 10
+            else:
+                xp_earned += 3  # Participation XP
+
+            # 3. Update Streak & Profile
+            cursor.execute("SELECT current_xp, current_level, current_streak, best_streak, last_practice_day FROM user_profile WHERE id = 1")
+            prof = cursor.fetchone()
+
+            curr_xp = prof["current_xp"] + xp_earned
+            curr_lvl = (curr_xp // 500) + 1
+            curr_streak = prof["current_streak"]
+            best_streak = prof["best_streak"]
+            last_day = prof["last_practice_day"]
+
+            if last_day != today_str:
+                if last_day:
+                    try:
+                        last_date = date.fromisoformat(last_day)
+                        if last_date == date.today() - timedelta(days=1):
+                            curr_streak += 1
+                        elif last_date < date.today() - timedelta(days=1):
+                            curr_streak = 1
+                    except ValueError:
+                        curr_streak = 1
+                else:
+                    curr_streak = 1
+
+                if curr_streak > best_streak:
+                    best_streak = curr_streak
+
+            cursor.execute("""
+                UPDATE user_profile
+                SET current_xp = ?, current_level = ?, current_streak = ?, best_streak = ?, last_practice_day = ?
+                WHERE id = 1
+            """, (curr_xp, curr_lvl, curr_streak, best_streak, today_str))
+
+            # 4. Check Unlockable Achievements
+            cursor.execute("SELECT COUNT(*) FROM attempt_records")
+            total_attempts = cursor.fetchone()[0]
+            if total_attempts >= 1:
+                cursor.execute("UPDATE achievements SET unlocked = 1, unlocked_at = ? WHERE id = 'a1' AND unlocked = 0", (time.time(),))
+
+            if curr_streak >= 3:
+                cursor.execute("UPDATE achievements SET unlocked = 1, unlocked_at = ? WHERE id = 'a4' AND unlocked = 0", (time.time(),))
+            if curr_streak >= 7:
+                cursor.execute("UPDATE achievements SET unlocked = 1, unlocked_at = ? WHERE id = 'a5' AND unlocked = 0", (time.time(),))
+
             conn.commit()
 
-    def get_recent_attempts(self, limit: int = 100) -> List[AttemptRecord]:
+        return {
+            "xp_earned": xp_earned,
+            "total_xp": curr_xp,
+            "level": curr_lvl,
+            "streak": curr_streak
+        }
+
+    def get_user_stats(self) -> dict:
+        """Returns live aggregated user metrics directly from SQLite."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT current_xp, current_level, current_streak, best_streak FROM user_profile WHERE id = 1")
+            prof = cursor.fetchone()
+
+            cursor.execute("SELECT COUNT(*), SUM(is_success) FROM attempt_records")
+            row = cursor.fetchone()
+
+            total_attempts = row[0] or 0
+            success_count = row[1] or 0
+            acc = (success_count / total_attempts * 100.0) if total_attempts > 0 else 0.0
+
+            xp = prof["current_xp"] if prof else 0
+            level = prof["current_level"] if prof else 1
+            streak = prof["current_streak"] if prof else 0
+            best = prof["best_streak"] if prof else 0
+
+            rank_title = LEVEL_TITLES.get(min(level, 10), "Fretboard Virtuoso")
+
+            return {
+                "total_xp": xp,
+                "current_level": level,
+                "rank_title": rank_title,
+                "current_streak": streak,
+                "best_streak": best,
+                "total_attempts": total_attempts,
+                "success_count": success_count,
+                "accuracy_rate": round(acc, 1),
+            }
+
+    def get_note_mastery(self) -> Dict[str, float]:
+        """Returns accuracy percentages for all 12 chromatic note classes."""
+        mastery = {note: 0.0 for note in CHROMATIC_SHARPS}
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT target_name, target_type, is_success, response_time_sec, cents_error, timestamp
+                SELECT
+                    target_name,
+                    COUNT(*) as attempts,
+                    SUM(is_success) as successes
                 FROM attempt_records
-                ORDER BY timestamp DESC
-                LIMIT ?
-            """, (limit,))
-            rows = cursor.fetchall()
-            return [
-                AttemptRecord(
-                    target_name=row["target_name"],
-                    target_type=row["target_type"],
-                    is_success=bool(row["is_success"]),
-                    response_time_sec=row["response_time_sec"],
-                    cents_error=row["cents_error"],
-                    timestamp=row["timestamp"]
-                )
-                for row in rows
-            ]
+                WHERE target_type = 'note'
+                GROUP BY target_name
+            """)
+            for row in cursor.fetchall():
+                note = row["target_name"].upper()
+                if note in mastery:
+                    attempts = row["attempts"]
+                    successes = row["successes"] or 0
+                    mastery[note] = round((successes / attempts * 100.0), 1) if attempts > 0 else 0.0
+        return mastery
 
-    def get_chromatic_mastery(self) -> Dict[str, NoteMastery]:
-        """Calculates memorization accuracy, avg speed, and tier ranking for all 12 pitch classes."""
+    def get_detailed_note_mastery(self) -> Dict[str, NoteMastery]:
+        """Returns full NoteMastery model instances with attempts, accuracy, avg speed, and tier ranking."""
         mastery_map: Dict[str, NoteMastery] = {
             note: NoteMastery(note_name=note) for note in CHROMATIC_SHARPS
         }
@@ -159,32 +314,30 @@ class ProgressRepository:
             cursor.execute("""
                 SELECT
                     target_name,
-                    COUNT(*) as total_attempts,
-                    SUM(is_success) as total_success,
-                    AVG(CASE WHEN is_success = 1 THEN response_time_sec END) as avg_time
+                    COUNT(*) as attempts,
+                    SUM(is_success) as successes,
+                    AVG(CASE WHEN is_success = 1 THEN response_time_sec END) as avg_speed
                 FROM attempt_records
                 WHERE target_type = 'note'
                 GROUP BY target_name
             """)
-            rows = cursor.fetchall()
-
-            for row in rows:
-                note = row["target_name"]
+            for row in cursor.fetchall():
+                note = row["target_name"].upper()
                 if note in mastery_map:
-                    attempts = row["total_attempts"]
-                    successes = row["total_success"] or 0
-                    avg_time = row["avg_time"] or 0.0
+                    attempts = row["attempts"]
+                    successes = row["successes"] or 0
+                    avg_speed = row["avg_speed"] or 0.0
                     acc = (successes / attempts * 100.0) if attempts > 0 else 0.0
 
                     tier = MasteryTier.UNRANKED
-                    if attempts >= 5:
-                        if acc >= 95.0 and avg_time <= 1.2:
+                    if attempts >= 3:
+                        if acc >= 90.0 and avg_speed <= 1.2:
                             tier = MasteryTier.PLATINUM
-                        elif acc >= 85.0 and avg_time <= 2.0:
+                        elif acc >= 75.0 and avg_speed <= 2.0:
                             tier = MasteryTier.GOLD
-                        elif acc >= 75.0 and avg_time <= 3.0:
+                        elif acc >= 50.0:
                             tier = MasteryTier.SILVER
-                        elif acc >= 60.0:
+                        elif acc > 0:
                             tier = MasteryTier.BRONZE
 
                     mastery_map[note] = NoteMastery(
@@ -192,69 +345,47 @@ class ProgressRepository:
                         attempts_count=attempts,
                         success_count=successes,
                         accuracy_percentage=round(acc, 1),
-                        avg_response_time_sec=round(avg_time, 2),
+                        avg_response_time_sec=round(avg_speed, 2),
                         tier=tier
                     )
-
         return mastery_map
 
-
-    def get_user_stats(self) -> dict:
-        """Returns overall user progress stats including XP, streaks, and accuracy."""
-        # Default fallbacks if underlying SQLite queries are unpopulated
-        return {
-            "total_xp": getattr(self, "total_xp", 1250),
-            "current_streak": getattr(self, "current_streak", 5),
-            "best_streak": getattr(self, "best_streak", 12),
-            "total_attempts": getattr(self, "total_attempts", 142),
-            "accuracy_rate": getattr(self, "accuracy_rate", 84.5),
-        }
-
-    def get_note_mastery(self) -> dict:
-        """Returns accuracy mapping for all 12 chromatic note classes."""
-        return getattr(self, "note_mastery", {
-            "C": 92.0, "C#": 65.0, "D": 88.0, "D#": 45.0,
-            "E": 95.0, "F": 78.0, "F#": 55.0, "G": 91.0,
-            "G#": 40.0, "A": 89.0, "A#": 60.0, "B": 82.0,
-        })
-
-    def get_daily_challenges(self) -> list:
-        """Returns current daily practice challenges."""
-        return getattr(self, "daily_challenges", [
-            {"id": "d1", "title": "Fretboard Warmup", "description": "Identify 10 pitch targets in Trainer Mode", "progress": 10, "target": 10, "xp_reward": 50, "completed": True},
-            {"id": "d2", "title": "Ear Specialist", "description": "Score 5 correct answers in Interval Mode", "progress": 3, "target": 5, "xp_reward": 75, "completed": False},
-            {"id": "d3", "title": "Chording Practice", "description": "Recognize 3 strummed chord qualities", "progress": 1, "target": 3, "xp_reward": 100, "completed": False},
-        ])
-
-    def get_achievements(self, category: str = "All") -> list:
-        """Returns achievement badges filterable by category."""
-        all_badges = getattr(self, "achievements", [
-            {"id": "a1", "title": "First Steps", "description": "Complete your first pitch recognition exercise", "category": "Trainer", "unlocked": True},
-            {"id": "a2", "title": "Pitch Perfect", "description": "Reach Platinum mastery on 3 chromatic notes", "category": "Trainer", "unlocked": True},
-            {"id": "a3", "title": "Interval Ace", "description": "Correctly identify 25 musical intervals", "category": "Ear Training", "unlocked": True},
-            {"id": "a4", "title": "On Fire!", "description": "Maintain a 7-day practice streak", "category": "Streaks", "unlocked": False},
-            {"id": "a5", "title": "Multi-Instrumentalist", "description": "Create and practice with a custom instrument profile", "category": "Trainer", "unlocked": False},
-        ])
-        if category == "All":
-            return all_badges
-        return [b for b in all_badges if b.get("category") == category]
-
-    def unlock_achievement(self, achievement_id: str) -> None:
+    def get_daily_challenges(self) -> List[Dict]:
+        """Returns active daily practice quests."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE achievements
-                SET unlocked = 1, unlocked_at = ?
-                WHERE id = ? AND unlocked = 0
-            """, (time.time(), achievement_id))
-            conn.commit()
+            cursor.execute("SELECT id, title, description, target_count, current_count, xp_reward, is_completed, category FROM daily_challenges")
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "title": r["title"],
+                    "description": r["description"],
+                    "target": r["target_count"],
+                    "progress": r["current_count"],
+                    "xp_reward": r["xp_reward"],
+                    "completed": bool(r["is_completed"]),
+                    "category": r["category"]
+                }
+                for r in rows
+            ]
 
-    def sync_default_achievements(self, defaults: List[Achievement]) -> None:
+    def get_achievements(self, category: str = "All") -> List[Dict]:
+        """Returns filterable achievement badge list."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            for ach in defaults:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO achievements (id, title, description, category, icon_name, unlocked, unlocked_at)
-                    VALUES (?, ?, ?, ?, ?, 0, NULL)
-                """, (ach.id, ach.title, ach.description, ach.category, ach.icon_name))
-            conn.commit()
+            if category == "All":
+                cursor.execute("SELECT id, title, description, category, unlocked FROM achievements")
+            else:
+                cursor.execute("SELECT id, title, description, category, unlocked FROM achievements WHERE category = ?", (category,))
+
+            return [
+                {
+                    "id": r["id"],
+                    "title": r["title"],
+                    "description": r["description"],
+                    "category": r["category"],
+                    "unlocked": bool(r["unlocked"])
+                }
+                for r in cursor.fetchall()
+            ]
