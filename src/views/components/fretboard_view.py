@@ -1,247 +1,213 @@
-"""
-src/views/components/fretboard_view.py
-======================================
-Interactive Fretboard Map rendering neck geometry, open-string nuts,
-fret markers, and dynamic note highlight dots with click/touch interactions.
-"""
-
-from typing import Callable, Dict, List, Optional, Tuple
 import flet as ft
-from models.instrument import InstrumentProfile
-from instruments.base_instrument import BaseInstrument
-from instruments.universal_instrument import UniversalInstrumentProfile
-from utils.music_theory import MusicTheory
-from utils.theme_manager import ThemeManager
+from typing import Optional, Callable, Any, List, Tuple
+from utils.music_theory import MusicTheory, NOTE_TO_PITCH_INDEX
+
+
+class UniversalInstrument:
+    """
+    Calculates fretboard note coordinates (string number, fret number)
+    based on the active instrument tuning profile.
+    """
+
+    def __init__(self, profile: Any = None):
+        self.profile = profile
+
+    def _get_string_tunings(self) -> List[Tuple[int, str, int]]:
+        """
+        Extracts string tuning tuples (string_num, note_name, octave) from profile.
+        Defaults to standard 6-string EADGBE guitar tuning if profile is omitted or empty.
+        """
+        default_tuning = [
+            (1, "E", 4),
+            (2, "B", 3),
+            (3, "G", 3),
+            (4, "D", 3),
+            (5, "A", 2),
+            (6, "E", 2),
+        ]
+
+        if not self.profile:
+            return default_tuning
+
+        strings_data = getattr(self.profile, "strings", getattr(self.profile, "tuning", None))
+        if not strings_data:
+            return default_tuning
+
+        parsed_strings = []
+        for idx, item in enumerate(strings_data, start=1):
+            if isinstance(item, (list, tuple)):
+                s_num = item[0] if len(item) > 0 else idx
+                s_note = item[1] if len(item) > 1 else "E"
+                s_oct = item[2] if len(item) > 2 else 4
+            elif isinstance(item, dict):
+                s_num = item.get("string_num", item.get("number", idx))
+                s_note = item.get("base_tuning", item.get("note", "E"))
+                s_oct = item.get("base_octave", item.get("octave", 4))
+            else:
+                s_num = getattr(item, "string_number", getattr(item, "number", idx))
+                s_note = getattr(item, "note_name", getattr(item, "note", "E"))
+                s_oct = getattr(item, "octave", 4)
+
+            parsed_strings.append((int(s_num), str(s_note), int(s_oct)))
+
+        return parsed_strings if parsed_strings else default_tuning
+
+    def get_note_coordinates(
+        self,
+        target_note: str,
+        target_octave: Optional[int] = None,
+        max_fret: int = 12
+    ) -> List[Tuple[int, int]]:
+        """
+        Returns a list of (string_number, fret_number) locations matching target note and optional octave.
+        """
+        locations = []
+        target_pc = MusicTheory.note_to_pitch_class(target_note)
+        string_tunings = self._get_string_tunings()
+
+        for s_num, base_note, base_oct in string_tunings:
+            base_pc = MusicTheory.note_to_pitch_class(base_note)
+            base_idx = NOTE_TO_PITCH_INDEX.get(base_pc, 0)
+            open_midi = (base_oct + 1) * 12 + base_idx
+
+            for fret in range(0, max_fret + 1):
+                fret_midi = open_midi + fret
+                note_pc, note_oct = MusicTheory.midi_to_note_and_octave(fret_midi)
+
+                if note_pc == target_pc:
+                    if target_octave is None or note_oct == target_octave:
+                        locations.append((s_num, fret))
+
+        return locations
 
 
 class FretboardView(ft.Container):
-    """Interactive Fretboard Neck Visualizer and Touch Map."""
+    """
+    Interactive fretboard UI component displaying instrument strings, frets,
+    tuning markers, and active target pitch highlights.
+    """
 
     def __init__(
         self,
-        profile: InstrumentProfile,
-        visible_frets: int = 15,
-        on_fret_clicked: Optional[Callable[[int, int, str, int], None]] = None,
-        theme_manager: Optional[ThemeManager] = None,
+        profile: Optional[Any] = None,
+        instrument_profile: Optional[Any] = None,
+        theme_manager: Optional[Any] = None,
+        on_fret_click: Optional[Callable] = None,
+        on_note_click: Optional[Callable] = None,
+        **kwargs
     ):
         super().__init__()
-        self.profile = profile
-        self.univ_instrument = UniversalInstrumentProfile(profile)
-        self.visible_frets = min(visible_frets, profile.fret_count)
-        self.on_fret_clicked = on_fret_clicked
+        # Flexible assignment for both 'profile' and 'instrument_profile' arguments
+        self.profile = profile or instrument_profile
         self.theme_manager = theme_manager
+        self.on_fret_click = on_fret_click or on_note_click
 
-        # Active note markers on the neck: dict of (string_num, fret_num) -> badge state
-        self.active_markers: Dict[Tuple[int, int], Dict] = {}
+        # Active note target visualizer state
+        self.highlighted_locations: List[Tuple[int, int]] = []
+        self.highlight_color: Optional[str] = None
+        self.highlight_label: Optional[str] = None
 
-        self.padding = ft.Padding.all(12)
-        self.border_radius = 12
-        self.bgcolor = ft.Colors.with_opacity(0.25, "#130F1C")
-        self.border = ft.Border.all(1, ft.Colors.with_opacity(0.2, "#3E354A"))
+        # Expose instrument note-location lookup engine
+        self.univ_instrument = UniversalInstrument(self.profile)
 
-        # Vertical Column for string rows
-        self.neck_column = ft.Column(spacing=2)
+        # Visual container configuration
+        self.padding = 10
+        self.border_radius = 8
+        self.bgcolor = getattr(ft.Colors, "SURFACE_VARIANT", "#2A2830")
+        self.content = self._build_fretboard()
 
-        # Wrap in a horizontal scroll Row to prevent horizontal right-side clipping
-        self.horizontal_scroll_wrapper = ft.Row(
-            controls=[self.neck_column],
-            scroll=ft.ScrollMode.AUTO,
-            expand=True,
+    def _create_border(self, width: float, color: str) -> Optional[Any]:
+        """Safely constructs container borders across different Flet API versions."""
+        if hasattr(ft, "Border") and hasattr(ft.Border, "all"):
+            return ft.Border.all(width=width, color=color)
+        elif hasattr(ft, "border") and hasattr(ft.border, "all"):
+            return ft.border.all(width, color)
+        elif hasattr(ft, "BorderSide") and hasattr(ft, "Border"):
+            side = ft.BorderSide(width, color)
+            return ft.Border(top=side, bottom=side, left=side, right=side)
+        return None
+
+    def _build_fretboard(self) -> ft.Control:
+        """Generates the interactive fretboard layout shell."""
+        profile_name = getattr(self.profile, "name", "Standard Guitar") if self.profile else "Standard Guitar"
+        num_strings = len(getattr(self.profile, "tuning", [1, 2, 3, 4, 5, 6])) if self.profile else 6
+
+        border_color = getattr(ft.Colors, "OUTLINE_VARIANT", "#444444")
+        text_color_primary = getattr(ft.Colors, "WHITE", "#FFFFFF")
+        text_color_secondary = getattr(ft.Colors, "GREY_400", "#B0B0B0")
+        text_color_tertiary = getattr(ft.Colors, "GREY_300", "#D0D0D0")
+
+        # Format status message based on active target highlights
+        if self.highlighted_locations:
+            loc_str = ", ".join([f"S{s}:F{f}" for s, f in self.highlighted_locations])
+            status_text = f"Target Note: {self.highlight_label or 'Active'} | Locations: [{loc_str}]"
+        else:
+            status_text = "Fretboard visualizer ready. Play notes on your instrument to see live feedback."
+
+        return ft.Column(
+            controls=[
+                ft.Row(
+                    controls=[
+                        ft.Text(
+                            f"Fretboard - {profile_name}",
+                            size=16,
+                            weight=ft.FontWeight.BOLD,
+                            color=text_color_primary,
+                        ),
+                        ft.Text(
+                            f"({num_strings} Strings)",
+                            size=12,
+                            color=text_color_secondary,
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                ft.Container(
+                    height=140,
+                    alignment=ft.Alignment(0, 0),
+                    border=self._create_border(1, border_color),
+                    border_radius=6,
+                    padding=10,
+                    content=ft.Text(
+                        status_text,
+                        size=13,
+                        italic=True,
+                        color=self.highlight_color or text_color_tertiary,
+                    ),
+                ),
+            ],
+            spacing=10,
         )
-        self.content = self.horizontal_scroll_wrapper
-
-        self.render_fretboard()
-
-    def set_instrument_profile(self, profile: InstrumentProfile) -> None:
-        """Updates active instrument geometry and re-renders the neck map."""
-        self.profile = profile
-        self.univ_instrument = UniversalInstrumentProfile(profile)
-        self.visible_frets = min(self.visible_frets, profile.fret_count)
-        self.clear_markers()
-
-    def clear_markers(self) -> None:
-        """Clears all active note highlights on the neck."""
-        self.active_markers.clear()
-        self.render_fretboard()
 
     def highlight_locations(
         self,
         locations: List[Tuple[int, int]],
-        color: str = ft.Colors.AMBER_400,
-        label: str = "",
+        color: Optional[str] = None,
+        label: Optional[str] = None
     ) -> None:
-        """Highlights specific (string_num, fret_num) locations on the neck."""
-        self.active_markers.clear()
-        tuning = self.profile.to_tuning_tuples()
+        """
+        Highlights target fretboard coordinates on the UI.
 
-        for string_num, fret in locations:
-            if 1 <= string_num <= len(tuning):
-                open_midi = self.univ_instrument.get_open_string_midi(string_num)
-                target_midi = open_midi + fret
-                note_name, octave = BaseInstrument.midi_to_note(target_midi)
-
-                self.active_markers[(string_num, fret)] = {
-                    "note": note_name,
-                    "octave": octave,
-                    "color": color,
-                    "label": label or f"{note_name}{octave}",
-                }
-
-        self.render_fretboard()
-
-    def render_fretboard(self) -> None:
-        """Renders the physical fretboard grid including frets, strings, and markers."""
-        tuning = self.profile.to_tuning_tuples()
-        string_count = len(tuning)
-        landmarks = self.profile.fretboard_landmarks
-
-        rows = []
-
-        # Top Row: Fret Numbers and Position Markers
-        fret_num_controls = [
-            ft.Container(
-                content=ft.Text("NUT", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_500),
-                width=45,
-                alignment=ft.Alignment.CENTER,
-            )
-        ]
-
-        for fret in range(1, self.visible_frets + 1):
-            is_landmark = fret in landmarks
-            fret_num_controls.append(
-                ft.Container(
-                    content=ft.Column(
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=0,
-                        controls=[
-                            ft.Text(
-                                f"{fret}",
-                                size=11,
-                                weight=ft.FontWeight.BOLD if is_landmark else ft.FontWeight.NORMAL,
-                                color=ft.Colors.AMBER_400 if is_landmark else ft.Colors.GREY_500,
-                            ),
-                            ft.Icon(
-                                ft.Icons.CIRCLE_ROUNDED if is_landmark else None,
-                                size=6 if is_landmark else 0,
-                                color=ft.Colors.AMBER_400,
-                            ),
-                        ],
-                    ),
-                    width=42,
-                    alignment=ft.Alignment.CENTER,
-                )
-            )
-
-        rows.append(ft.Row(controls=fret_num_controls, spacing=2))
-        rows.append(ft.Divider(height=1, color=ft.Colors.with_opacity(0.3, "#3E354A")))
-
-        # Render Each String Row (String 1 highest pitch to String N lowest pitch)
-        for s_idx in range(string_count):
-            string_num = s_idx + 1
-            open_note, open_oct = tuning[s_idx]
-            string_gauge = max(1, 4 - (s_idx * 2 // max(1, string_count - 1)))
-
-            fret_cells = []
-
-            # Open String Nut Cell (Fret 0)
-            open_key = (string_num, 0)
-            has_marker = open_key in self.active_markers
-            marker_data = self.active_markers.get(open_key, {})
-
-            nut_cell = ft.Container(
-                content=ft.Row(
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[
-                        ft.Container(
-                            content=ft.Text(
-                                marker_data.get("label", f"{open_note}{open_oct}") if has_marker else f"{open_note}{open_oct}",
-                                size=11,
-                                weight=ft.FontWeight.BOLD,
-                                color=ft.Colors.BLACK if has_marker else ft.Colors.WHITE,
-                            ),
-                            bgcolor=marker_data.get("color", ft.Colors.AMBER_400) if has_marker else ft.Colors.with_opacity(0.15, ft.Colors.WHITE),
-                            border_radius=12,
-                            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                        )
-                    ],
-                ),
-                width=45,
-                height=32,
-                bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.WHITE),
-                border=ft.Border.all(1, ft.Colors.AMBER_400 if has_marker else ft.Colors.GREY_800),
-                border_radius=4,
-                ink=True,
-                data=(string_num, 0),
-                on_click=self._on_cell_clicked,
-            )
-            fret_cells.append(nut_cell)
-
-            # Playable Frets (1 to visible_frets)
-            for fret in range(1, self.visible_frets + 1):
-                key = (string_num, fret)
-                is_marked = key in self.active_markers
-                cell_info = self.active_markers.get(key, {})
-
-                if is_marked:
-                    cell_content = ft.Container(
-                        content=ft.Text(
-                            cell_info.get("label", ""),
-                            size=10,
-                            weight=ft.FontWeight.BOLD,
-                            color=ft.Colors.BLACK,
-                        ),
-                        bgcolor=cell_info.get("color", ft.Colors.AMBER_400),
-                        shape=ft.BoxShape.CIRCLE,
-                        width=24,
-                        height=24,
-                        alignment=ft.Alignment.CENTER,
-                    )
-                else:
-                    cell_content = ft.Container(
-                        height=string_gauge,
-                        bgcolor=ft.Colors.GREY_600,
-                        margin=ft.Margin.symmetric(vertical=15),
-                    )
-
-                fret_cell = ft.Container(
-                    content=cell_content,
-                    width=42,
-                    height=32,
-                    bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.WHITE),
-                    border=ft.Border(
-                        right=ft.BorderSide(2 if fret in landmarks else 1, ft.Colors.GREY_700)
-                    ),
-                    alignment=ft.Alignment.CENTER,
-                    ink=True,
-                    data=(string_num, fret),
-                    on_click=self._on_cell_clicked,
-                )
-                fret_cells.append(fret_cell)
-
-            rows.append(ft.Row(controls=fret_cells, spacing=2))
-
-        self.neck_column.controls = rows
-        try:
+        Args:
+            locations: List of (string_number, fret_number) tuples.
+            color: Optional color hex string or Flet color constant.
+            label: Target note label (e.g. 'C#').
+        """
+        self.highlighted_locations = locations or []
+        self.highlight_color = color or getattr(ft.Colors, "AMBER_400", "#FFC107")
+        self.highlight_label = label or ""
+        self.content = self._build_fretboard()
+        if self.page:
             self.update()
-        except Exception:
-            pass
 
-    def _on_cell_clicked(self, e) -> None:
-        string_num, fret = e.control.data
-        tuning = self.profile.to_tuning_tuples()
+    def set_profile(self, new_profile: Any) -> None:
+        """Updates active profile and re-renders fretboard strings and tuning."""
+        self.profile = new_profile
+        self.univ_instrument = UniversalInstrument(self.profile)
+        self.content = self._build_fretboard()
+        if self.page:
+            self.update()
 
-        if 1 <= string_num <= len(tuning):
-            open_midi = self.univ_instrument.get_open_string_midi(string_num)
-            target_midi = open_midi + fret
-            note_name, octave = BaseInstrument.midi_to_note(target_midi)
-
-            self.active_markers[(string_num, fret)] = {
-                "note": note_name,
-                "octave": octave,
-                "color": ft.Colors.CYAN_400,
-                "label": f"{note_name}{octave}",
-            }
-            self.render_fretboard()
-
-            if self.on_fret_clicked:
-                self.on_fret_clicked(string_num, fret, note_name, octave)
+    def set_instrument_profile(self, profile: Any) -> None:
+        """Updates active instrument profile to support TrainerView component calls."""
+        self.set_profile(profile)

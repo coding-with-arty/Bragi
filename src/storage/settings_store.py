@@ -8,18 +8,14 @@ import json
 from pathlib import Path
 from typing import Optional
 from models.settings import TrainerSettings
+from storage.path_utils import get_settings_path
 
 
 class SettingsStore:
     """Handles thread-safe reading and writing of TrainerSettings to disk."""
 
-    def __init__(self, storage_path: Optional[Path] = None):
-        if storage_path is None:
-            config_dir = Path.home() / ".Bragi"
-            config_dir.mkdir(parents=True, exist_ok=True)
-            self.storage_file = config_dir / "settings.json"
-        else:
-            self.storage_file = storage_path
+    def __init__(self, filepath: Optional[Path] = None):
+        self.filepath = filepath or get_settings_path()
 
     def load_settings(self) -> TrainerSettings:
         """Loads settings from disk or returns default configuration if missing."""

@@ -1,37 +1,51 @@
-# src/utils/responsive.py
 from enum import Enum
 import flet as ft
 
 
-class DeviceType(str, Enum):
-    MOBILE = "mobile"
-    TABLET = "tablet"
-    DESKTOP = "desktop"
+class DeviceType(Enum):
+    MOBILE = "Mobile"      # Screen width < 600px
+    TABLET = "Tablet"      # Screen width 600px - 1024px
+    DESKTOP = "Desktop"    # Screen width > 1024px
 
 
 class ResponsiveLayout:
-    """Helper class evaluating viewport breakpoints and adaptive dimensions."""
+    """
+    Evaluates viewport window breakpoints and provides dynamic dimension
+    calculations for responsive UI rendering.
+    """
 
     @staticmethod
     def get_device_type(page: ft.Page) -> DeviceType:
-        width = page.width if page and page.width else 1024
+        """Determines current device category based on page width."""
+        width = page.width if page and page.width else 1024.0
+
         if width < 600:
             return DeviceType.MOBILE
-        elif width < 1024:
+        elif width <= 1024:
             return DeviceType.TABLET
-        return DeviceType.DESKTOP
+        else:
+            return DeviceType.DESKTOP
 
     @staticmethod
-    def get_target_circle_size(page: ft.Page) -> float:
-        width = page.width if page and page.width else 1024
-        if width < 400:
+    def get_target_display_size(page: ft.Page) -> float:
+        """Calculates adaptive target display circle diameter."""
+        device = ResponsiveLayout.get_device_type(page)
+
+        if device == DeviceType.MOBILE:
             return 220.0
-        elif width < 600:
-            return 270.0
-        elif width < 1024:
-            return 320.0
-        return 360.0
+        elif device == DeviceType.TABLET:
+            return 280.0
+        else:
+            return 340.0
 
     @staticmethod
-    def is_mobile(page: ft.Page) -> bool:
-        return ResponsiveLayout.get_device_type(page) == DeviceType.MOBILE
+    def get_sidebar_width(page: ft.Page) -> float:
+        """Returns adaptive width for drawer and sidebar panels."""
+        device = ResponsiveLayout.get_device_type(page)
+
+        if device == DeviceType.MOBILE:
+            return page.width * 0.90 if page and page.width else 300.0
+        elif device == DeviceType.TABLET:
+            return 280.0
+        else:
+            return 320.0

@@ -1,154 +1,131 @@
-# src/utils/music_theory.py
 import random
-from typing import List, Tuple, Dict, Set, Optional
-from models.chord import PitchClass, ChordQuality
+from typing import List, Tuple, Dict, Any
+from models.chord import ChordQuality
 
-NOTES: List[str] = [
-    "C", "C#", "Db", "D", "D#", "Eb", "E", "F",
-    "F#", "Gb", "G", "G#", "Ab", "A", "A#", "Bb", "B"
-]
+# Base pitch lists and constants
+CHROMATIC_SHARPS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+NOTES = CHROMATIC_SHARPS
+A440_HZ = 440.0
 
-CHROMATIC_SHARPS: List[str] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-CHROMATIC_FLATS: List[str] = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
-
+# Lookup dictionary mapping note spellings to chromatic pitch indices (0-11)
 NOTE_TO_PITCH_INDEX: Dict[str, int] = {
     "C": 0, "C#": 1, "DB": 1,
     "D": 2, "D#": 3, "EB": 3,
-    "E": 4, "F": 5, "F#": 6, "GB": 6,
+    "E": 4, "FB": 4, "E#": 5,
+    "F": 5, "F#": 6, "GB": 6,
     "G": 7, "G#": 8, "AB": 8,
     "A": 9, "A#": 10, "BB": 10,
-    "B": 11
+    "B": 11, "CB": 11, "B#": 0,
 }
 
-# Musical Interval Semitone Distances
+# Musical interval semitone distances for ear training analysis
 INTERVAL_SEMITONES: Dict[str, int] = {
-    "P1": 0,   # Perfect Unison / Root
-    "m2": 1,   # Minor 2nd
-    "M2": 2,   # Major 2nd
-    "m3": 3,   # Minor 3rd
-    "M3": 4,   # Major 3rd
-    "P4": 5,   # Perfect 4th
-    "d5": 6,   # Diminished 5th / Tritone
-    "P5": 7,   # Perfect 5th
-    "A5": 8,   # Augmented 5th
-    "m6": 8,   # Minor 6th
-    "M6": 9,   # Major 6th
-    "d7": 9,   # Diminished 7th
-    "m7": 10,  # Minor 7th
-    "M7": 11,  # Major 7th
-    "P8": 12,  # Octave
-    "M9": 14,  # Major 9th
+    "Unison": 0,
+    "Minor 2nd": 1,
+    "Major 2nd": 2,
+    "Minor 3rd": 3,
+    "Major 3rd": 4,
+    "Perfect 4th": 5,
+    "Tritone": 6,
+    "Perfect 5th": 7,
+    "Minor 6th": 8,
+    "Major 6th": 9,
+    "Minor 7th": 10,
+    "Major 7th": 11,
+    "Octave": 12,
 }
 
-A440_HZ: float = 440.0
-
-CHORD_FORMULAS: Dict[ChordQuality, List[int]] = {
-    ChordQuality.MAJOR: [0, 4, 7],                    # Root, M3, P5
-    ChordQuality.MINOR: [0, 3, 7],                    # Root, m3, P5
-    ChordQuality.DIMINISHED: [0, 3, 6],               # Root, m3, d5
-    ChordQuality.AUGMENTED: [0, 4, 8],                # Root, M3, A5
-    ChordQuality.DOMINANT_7TH: [0, 4, 7, 10],         # Root, M3, P5, m7
-    ChordQuality.MAJOR_7TH: [0, 4, 7, 11],            # Root, M3, P5, M7
-    ChordQuality.MINOR_7TH: [0, 3, 7, 10],            # Root, m3, P5, m7
-    ChordQuality.HALF_DIMINISHED_7TH: [0, 3, 6, 10],   # Root, m3, d5, m7
-    ChordQuality.DIMINISHED_7TH: [0, 3, 6, 9],        # Root, m3, d5, d7
-    ChordQuality.SUS2: [0, 2, 7],                     # Root, M2, P5
-    ChordQuality.SUS4: [0, 5, 7],                     # Root, P4, P5
-}
-
-CHORD_INTERVAL_NAMES: Dict[ChordQuality, List[str]] = {
-    ChordQuality.MAJOR: ["1", "3", "5"],
-    ChordQuality.MINOR: ["1", "b3", "5"],
-    ChordQuality.DIMINISHED: ["1", "b3", "b5"],
-    ChordQuality.AUGMENTED: ["1", "3", "#5"],
-    ChordQuality.DOMINANT_7TH: ["1", "3", "5", "b7"],
-    ChordQuality.MAJOR_7TH: ["1", "3", "5", "7"],
-    ChordQuality.MINOR_7TH: ["1", "b3", "5", "b7"],
-    ChordQuality.HALF_DIMINISHED_7TH: ["1", "b3", "b5", "b7"],
-    ChordQuality.DIMINISHED_7TH: ["1", "b3", "b5", "bb7"],
-    ChordQuality.SUS2: ["1", "2", "5"],
-    ChordQuality.SUS4: ["1", "4", "5"],
-}
-
-PRESET_TUNINGS: Dict[str, List[Tuple[str, int]]] = {
-    "Guitar (6-String Standard)": [("E", 4), ("B", 3), ("G", 3), ("D", 3), ("A", 2), ("E", 2)],
-    "Guitar (Drop D)": [("E", 4), ("B", 3), ("G", 3), ("D", 3), ("A", 2), ("D", 2)],
-    "Guitar (DADGAD)": [("D", 4), ("A", 3), ("G", 3), ("D", 3), ("A", 2), ("D", 2)],
-    "Guitar (7-String Standard)": [("E", 4), ("B", 3), ("G", 3), ("D", 3), ("A", 2), ("E", 2), ("B", 1)],
-    "Guitar (8-String Standard)": [("E", 4), ("B", 3), ("G", 3), ("D", 3), ("A", 2), ("E", 2), ("B", 1), ("F#", 1)],
-    "Bass (4-String Standard)": [("G", 2), ("D", 2), ("A", 1), ("E", 1)],
-    "Bass (5-String Standard)": [("G", 2), ("D", 2), ("A", 1), ("E", 1), ("B", 0)],
-    "Ukulele (Regular 4-String)": [("A", 4), ("E", 4), ("C", 4), ("G", 4)],
-    "Ukulele (Baritone 4-String)": [("E", 4), ("B", 3), ("G", 3), ("D", 3)],
-    "Custom": []
+# Chord structure interval definitions
+CHORD_FORMULAS: Dict[Any, List[int]] = {
+    ChordQuality.MAJOR: [0, 4, 7],
+    ChordQuality.MINOR: [0, 3, 7],
+    ChordQuality.DOMINANT_7TH: [0, 4, 7, 10],
+    ChordQuality.MAJOR_7TH: [0, 4, 7, 11],
+    ChordQuality.SUS4: [0, 5, 7],
+    "Major": [0, 4, 7],
+    "Minor": [0, 3, 7],
+    "Dominant 7th": [0, 4, 7, 10],
+    "Major 7th": [0, 4, 7, 11],
+    "Sus4": [0, 5, 7],
 }
 
 
 class MusicTheory:
-    """Core music theory static helpers and harmonic calculators."""
+    """Utility class for music theory calculations, chromatic pitch indexing, and MIDI conversions."""
 
     @staticmethod
-    def get_notes() -> List[str]:
-        return NOTES
+    def note_to_pitch_class(note_name: str) -> str:
+        """Normalizes note names into standard chromatic sharps (e.g., Db -> C#)."""
+        cleaned = str(note_name).strip().upper()
+        enharmonics = {
+            "DB": "C#", "EB": "D#", "FB": "E", "GB": "F#",
+            "AB": "G#", "BB": "A#", "CB": "B", "E#": "F", "B#": "C"
+        }
+        return enharmonics.get(cleaned, cleaned)
 
     @staticmethod
-    def get_presets() -> List[str]:
-        return list(PRESET_TUNINGS.keys())
+    def pitch_class_to_note(pitch_class: Any) -> str:
+        """
+        Converts an integer pitch index (0-11) or pitch class string into standard note notation.
+        """
+        if isinstance(pitch_class, int):
+            return CHROMATIC_SHARPS[pitch_class % 12]
+        return MusicTheory.note_to_pitch_class(str(pitch_class))
 
     @staticmethod
-    def get_preset_tuning(preset_name: str) -> List[Tuple[str, int]]:
-        return PRESET_TUNINGS.get(preset_name, [])
+    def midi_to_note_and_octave(midi_note: int) -> Tuple[str, int]:
+        """
+        Converts a MIDI note integer (e.g., 60) into pitch class string ("C") and octave (4).
+        """
+        pitch_class = CHROMATIC_SHARPS[midi_note % 12]
+        octave = (midi_note // 12) - 1
+        return pitch_class, octave
 
     @staticmethod
-    def set_custom_tuning(tuning_list: List[Tuple[str, int]], preset_name: str = "Custom") -> None:
-        """Sets or updates a custom tuning configuration in the preset lookup."""
-        PRESET_TUNINGS[preset_name] = list(tuning_list)
+    def get_chord_pitch_classes(root: str, quality: ChordQuality) -> List[str]:
+        """Returns the list of pitch classes comprising a chord defined by root and quality."""
+        root_pc = MusicTheory.note_to_pitch_class(root)
+        root_idx = CHROMATIC_SHARPS.index(root_pc)
+        intervals = CHORD_FORMULAS.get(quality, [0, 4, 7])
+        return [CHROMATIC_SHARPS[(root_idx + semi) % 12] for semi in intervals]
 
     @staticmethod
-    def note_to_pitch_class(note_name: str) -> int:
-        clean = note_name.strip().upper()
-        if clean not in NOTE_TO_PITCH_INDEX:
-            raise ValueError(f"Unknown note name: '{note_name}'")
-        return NOTE_TO_PITCH_INDEX[clean]
+    def get_chord_note_names(root: str, quality: ChordQuality) -> List[str]:
+        """Returns full note names for a given chord specification."""
+        return MusicTheory.get_chord_pitch_classes(root, quality)
 
     @staticmethod
-    def pitch_class_to_note(pitch_class: int, use_flats: bool = False) -> str:
-        pc = pitch_class % 12
-        return CHROMATIC_FLATS[pc] if use_flats else CHROMATIC_SHARPS[pc]
+    def generate_random_note(active_strings: Any, max_fret: int = 12) -> Tuple[int, str, int, str, int]:
+        """
+        Selects a random string from active_strings and a random fret (0 to max_fret),
+        calculating the resulting target note and octave.
 
-    @staticmethod
-    def get_chord_pitch_classes(root_note: str, quality: ChordQuality) -> Set[int]:
-        root_pc = MusicTheory.note_to_pitch_class(root_note)
-        offsets = CHORD_FORMULAS.get(quality, [0, 4, 7])
-        return {(root_pc + offset) % 12 for offset in offsets}
+        Returns: (string_num, base_tuning, base_octave, target_note, target_octave)
+        """
+        if not active_strings:
+            string_item = (1, "E", 4)
+        else:
+            string_item = random.choice(list(active_strings))
 
-    @staticmethod
-    def get_chord_note_names(root_note: str, quality: ChordQuality, use_flats: bool = False) -> List[str]:
-        root_pc = MusicTheory.note_to_pitch_class(root_note)
-        offsets = CHORD_FORMULAS.get(quality, [0, 4, 7])
-        return [MusicTheory.pitch_class_to_note(root_pc + offset, use_flats=use_flats) for offset in offsets]
+        if isinstance(string_item, (list, tuple)):
+            string_num = string_item[0]
+            base_tuning = string_item[1] if len(string_item) > 1 else "E"
+            base_octave = string_item[2] if len(string_item) > 2 else 4
+        elif isinstance(string_item, dict):
+            string_num = string_item.get("string_num", string_item.get("number", 1))
+            base_tuning = string_item.get("base_tuning", string_item.get("note", "E"))
+            base_octave = string_item.get("base_octave", string_item.get("octave", 4))
+        else:
+            string_num = getattr(string_item, "string_number", getattr(string_item, "number", 1))
+            base_tuning = getattr(string_item, "note_name", getattr(string_item, "note", "E"))
+            base_octave = getattr(string_item, "octave", 4)
 
-    @staticmethod
-    def calculate_target_octave(base_note: str, base_octave: int, target_note: str) -> int:
-        base_idx = NOTE_TO_PITCH_INDEX.get(base_note.upper(), 0)
-        target_idx = NOTE_TO_PITCH_INDEX.get(target_note.upper(), 0)
+        base_pc = MusicTheory.note_to_pitch_class(str(base_tuning))
+        base_idx = NOTE_TO_PITCH_INDEX.get(base_pc, 0)
+        base_midi = (int(base_octave) + 1) * 12 + base_idx
 
-        semitone_diff = target_idx - base_idx
-        if semitone_diff < 0:
-            semitone_diff += 12
+        fret = random.randint(0, max_fret)
+        target_midi = base_midi + fret
+        target_note, target_octave = MusicTheory.midi_to_note_and_octave(target_midi)
 
-        return base_octave + (semitone_diff // 12)
-
-    @staticmethod
-    def generate_random_note(active_strings: List[dict]) -> Tuple[int, str, int, str, int]:
-        enabled = [s for s in active_strings if s.get("active", True)]
-        if not enabled:
-            return (1, "E", 4, "C", 4)
-
-        target_str = random.choice(enabled)
-        target_note = random.choice(NOTES)
-        base_note = target_str.get("tuning", "E")
-        base_octave = target_str.get("octave", 2)
-
-        target_octave = MusicTheory.calculate_target_octave(base_note, base_octave, target_note)
-        return (target_str["string_num"], base_note, base_octave, target_note, target_octave)
+        return int(string_num), base_pc, int(base_octave), target_note, target_octave

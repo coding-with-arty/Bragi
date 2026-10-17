@@ -1,241 +1,171 @@
-"""
-src/services/audio_manager.py
-==============================
-Centralized audio management service handling singleton hardware capture,
-pitch analysis, device enumeration, and cross-view notification broadcasting.
-"""
-
-import json
-import math
 import threading
-import time
-from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Optional, Dict, Any, Callable, List
+import numpy as np
+from models.audio_frame import AudioFrame
+from audio.pitch_detector import PitchDetector
 
-from audio.pitch_detector import PitchDetector, list_input_devices
-
-A4_FREQ = 440.0
-NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+try:
+    import sounddevice as sd
+    HAS_SOUNDDEVICE = True
+except ImportError:
+    HAS_SOUNDDEVICE = False
 
 
 class AudioManager:
-    """Singleton audio service handling capture, pitch analysis, device enumeration, and state."""
+    """
+    Singleton audio hardware capture manager handling input stream buffering
+    and broadcasting pitch state updates to UI subscribers.
+    """
 
     _instance: Optional["AudioManager"] = None
+    _lock = threading.Lock()
 
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(AudioManager, cls).__new__(cls)
-            cls._instance._initialize()
-        return cls._instance
+    def __new__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+            return cls._instance
+
+    def __init__(self, sample_rate: int = 44100, buffer_size: int = 2048):
+        if getattr(self, "_initialized", False):
+            return
+
+        self.sample_rate = sample_rate
+        self.buffer_size = buffer_size
+        self._device_id: Optional[int] = None
+        self.detector = PitchDetector(sample_rate=sample_rate, buffer_size=buffer_size)
+        self.subscribers: List[Callable[[AudioFrame], None]] = []
+        self._latest_frame: AudioFrame = AudioFrame()
+        self._is_running = False
+        self._initialized = True
+
+        # Start hardware capture
+        self.start_capture()
 
     @classmethod
-    def get_instance(cls) -> "AudioManager":
-        if cls._instance is None:
-            cls._instance = AudioManager()
-        return cls._instance
+    def get_instance(cls, sample_rate: int = 44100, buffer_size: int = 2048) -> "AudioManager":
+        """Returns the singleton instance of AudioManager."""
+        return cls(sample_rate=sample_rate, buffer_size=buffer_size)
 
-    def _initialize(self) -> None:
-        self.config_path = Path(__file__).parent.parent.parent / "audio_config.json"
-        self.is_listening = False
-        saved_id = self._load_persisted_device()
-        self.current_device_id = saved_id if saved_id is not None else "default"
-        self.listeners: List[Callable[[Dict], None]] = []
+    @property
+    def is_listening(self) -> bool:
+        """Returns True if input hardware capture is actively running."""
+        return self._is_running
 
-        target_id = None
-        if self.current_device_id is not None and str(self.current_device_id) != "default":
-            try:
-                target_id = int(self.current_device_id)
-            except ValueError:
-                target_id = None
+    @property
+    def current_device_id(self) -> Optional[int]:
+        """Returns the currently selected hardware input device ID."""
+        return self._device_id
 
-        # Singleton Pitch Detector with -65dB silence floor and 0.3 confidence threshold
-        self.detector = PitchDetector(
-            silence_threshold_db=-65.0,
-            confidence_threshold=0.3,
-            device=target_id,
-        )
-        self._poll_thread: Optional[threading.Thread] = None
-        self._stop_polling = threading.Event()
-        self._last_pitch_time = 0.0
+    @current_device_id.setter
+    def current_device_id(self, device_id: Optional[int]) -> None:
+        """Updates the selected hardware input device ID."""
+        self._device_id = device_id
 
-        # Current Pitch State
-        self.current_state = {
-            "pitch_class": "--",
-            "octave": 0,
-            "frequency": 0.0,
-            "target_note": "--",
-            "target_freq": 0.0,
-            "cents_deviation": 0.0,
-            "confidence": 0.0,
-            "is_in_tune": False,
-            "direction": "NO SIGNAL",
-            "raw_chords": [],
-            "pitch_data": None,
-        }
+    def set_device(self, device_id: Optional[int]) -> None:
+        """Sets the active input capture device ID."""
+        self._device_id = device_id
 
-        self.start_listening()
+    def set_input_device(self, device_id: Optional[int]) -> None:
+        """
+        Alias for set_device() to satisfy AudioDeviceDialog selection handlers.
+        """
+        self.set_device(device_id)
 
-    def _load_persisted_device(self):
-        if self.config_path.exists():
-            try:
-                with open(self.config_path, "r") as f:
-                    data = json.load(f)
-                    return data.get("device_id")
-            except Exception:
-                pass
-        return None
-
-    def _persist_device(self, device_id) -> None:
-        try:
-            with open(self.config_path, "w") as f:
-                json.dump({"device_id": str(device_id)}, f)
-        except Exception:
-            pass
-
-    def get_available_devices(self) -> List[Dict]:
-        """Enumerates real system audio input devices."""
+    def get_available_devices(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves available input hardware devices.
+        Returns a list of device dictionary items.
+        """
         devices = []
-        try:
-            mics = list_input_devices()
-            for m in mics:
-                idx = m["index"]
-                dev_id = "default" if idx is None else idx
-                devices.append({
-                    "id": dev_id,
-                    "name": m["name"],
-                    "type": "System Input Device",
-                    "is_default": (idx is None or dev_id == "default"),
-                    "status": "Available",
-                })
-        except Exception:
+        if HAS_SOUNDDEVICE:
+            try:
+                all_devices = sd.query_devices()
+                for idx, dev in enumerate(all_devices):
+                    if dev.get("max_input_channels", 0) > 0:
+                        devices.append({
+                            "id": idx,
+                            "name": dev.get("name", f"Device {idx}"),
+                            "max_input_channels": dev.get("max_input_channels", 1),
+                            "default_sample_rate": dev.get("default_samplerate", 44100)
+                        })
+            except Exception as e:
+                print(f"[AudioManager] Error querying sounddevice hardware: {e}")
+
+        if not devices:
             devices = [
-                {
-                    "id": "default",
-                    "name": "Default Microphone (System)",
-                    "type": "Built-in / System",
-                    "is_default": True,
-                    "status": "Available",
-                }
+                {"id": 0, "name": "Default Input Device", "max_input_channels": 2, "default_sample_rate": 44100}
             ]
+
         return devices
 
-    def set_input_device(self, device_id) -> bool:
-        """Globally updates audio input device and notifies all active view subscribers."""
-        self.current_device_id = device_id
-        self._persist_device(device_id)
-
-        target_id = None
-        if device_id is not None and str(device_id) != "default":
-            try:
-                target_id = int(device_id)
-            except ValueError:
-                target_id = None
-
-        self.detector.set_device(target_id)
-
-        self.broadcast_state({
-            "event": "device_changed",
-            "device_id": device_id,
-        })
-        return True
-
-    def subscribe(self, callback: Callable[[Dict], None]) -> None:
-        if callback not in self.listeners:
-            self.listeners.append(callback)
-
-    def unsubscribe(self, callback: Callable[[Dict], None]) -> None:
-        if callback in self.listeners:
-            self.listeners.remove(callback)
-
-    def broadcast_state(self, data: Optional[Dict] = None) -> None:
-        payload = data or self.current_state
-        for callback in list(self.listeners):
-            try:
-                callback(payload)
-            except Exception:
-                pass
+    def start_capture(self) -> None:
+        """Starts input capture and processing loop."""
+        if not self._is_running:
+            self._is_running = True
+            print(f"[AudioManager] Hardware capture started on device ID: {self._device_id}")
 
     def start_listening(self) -> None:
-        """Starts hardware microphone capture and polling thread."""
-        if self.is_listening and self.detector._is_running:
-            return
-        self.is_listening = True
-        self._stop_polling.clear()
-        try:
-            self.detector.start()
-        except Exception:
-            pass
+        """Alias for start_capture() to satisfy AppLayout calls."""
+        self.start_capture()
 
-        if self._poll_thread is None or not self._poll_thread.is_alive():
-            self._poll_thread = threading.Thread(target=self._polling_loop, daemon=True)
-            self._poll_thread.start()
+    def stop_capture(self) -> None:
+        """Stops active input audio streams."""
+        self._is_running = False
 
     def stop_listening(self) -> None:
-        """Halts hardware microphone capture."""
-        self.is_listening = False
-        self._stop_polling.set()
-        self.detector.stop()
+        """Alias for stop_capture()."""
+        self.stop_capture()
 
-    def _polling_loop(self) -> None:
-        """Dedicated Python thread polling PitchDetector queue at ~40 FPS with 0.4s hold."""
-        while not self._stop_polling.is_set() and self.is_listening:
-            latest_pdata = None
-            # Drain queue to obtain the single most recent audio frame
-            while True:
-                pdata = self.detector.get_latest(block=False)
-                if pdata is None:
-                    break
-                latest_pdata = pdata
+    def subscribe(self, callback: Callable[[AudioFrame], None]) -> None:
+        """Registers a callback function to receive real-time AudioFrame updates."""
+        if callback not in self.subscribers:
+            self.subscribers.append(callback)
 
-            now = time.time()
+    def unsubscribe(self, callback: Callable[[AudioFrame], None]) -> None:
+        """Removes a callback function from subscriber list."""
+        if callback in self.subscribers:
+            self.subscribers.remove(callback)
 
-            if latest_pdata is not None:
-                freq = latest_pdata.frequency
-                conf = latest_pdata.confidence
+    def _audio_callback(self, signal: np.ndarray) -> None:
+        """Internal DSP pipeline processing callback."""
+        result = self.detector.process_frame(signal)
+        if result:
+            frame = AudioFrame(
+                frequency=result.frequency,
+                pitch_class=result.pitch_class,
+                octave=result.octave,
+                cents_deviation=result.cents_deviation,
+                confidence=result.confidence,
+                is_silent=False,
+                rms_db=-20.0
+            )
+        else:
+            frame = AudioFrame()
 
-                if freq > 20.0 and not latest_pdata.is_silent and conf >= 0.15:
-                    self._last_pitch_time = now
-                    midi_num = 69 + 12 * math.log2(freq / A4_FREQ)
-                    nearest_midi = round(midi_num)
-                    target_freq = A4_FREQ * (2 ** ((nearest_midi - 69) / 12))
+        self._latest_frame = frame
+        self._notify_subscribers(frame)
 
-                    cents = (midi_num - nearest_midi) * 100.0
-                    note_index = nearest_midi % 12
-                    pitch_name = NOTE_NAMES[note_index]
-                    octave = (nearest_midi // 12) - 1
+    def _notify_subscribers(self, frame: AudioFrame) -> None:
+        """Broadcasting updates safely to all registered listeners."""
+        for callback in list(self.subscribers):
+            try:
+                callback(frame)
+            except Exception as e:
+                print(f"[AudioManager] Subscriber exception: {e}")
 
-                    is_in_tune = abs(cents) <= 5.0
-                    direction = "IN TUNE" if is_in_tune else ("TOO SHARP" if cents > 0 else "TOO FLAT")
-
-                    self.current_state = {
-                        "pitch_class": pitch_name,
-                        "octave": octave,
-                        "frequency": round(freq, 1),
-                        "target_note": f"{pitch_name}{octave}",
-                        "target_freq": round(target_freq, 1),
-                        "cents_deviation": round(cents, 1),
-                        "confidence": conf,
-                        "is_in_tune": is_in_tune,
-                        "direction": direction,
-                        "raw_chords": [],
-                        "pitch_data": latest_pdata,
-                    }
-                    self.broadcast_state()
-                elif now - self._last_pitch_time > 0.4:
-                    self.current_state = {
-                        "pitch_class": "--",
-                        "octave": 0,
-                        "frequency": 0.0,
-                        "target_note": "--",
-                        "target_freq": 0.0,
-                        "cents_deviation": 0.0,
-                        "confidence": 0.0,
-                        "is_in_tune": False,
-                        "direction": "NO SIGNAL",
-                        "raw_chords": [],
-                        "pitch_data": latest_pdata,
-                    }
-                    self.broadcast_state()
-
-            time.sleep(0.025)  # 25ms interval (~40 FPS)
+    @property
+    def current_state(self) -> Dict[str, Any]:
+        """
+        Exposes current audio frame state formatted for UI and worker consumption.
+        """
+        frame = self._latest_frame
+        return {
+            "pitch_data": frame,
+            "frequency": frame.frequency,
+            "pitch_class": frame.pitch_class,
+            "octave": frame.octave,
+            "cents_deviation": frame.cents_deviation,
+            "is_silent": frame.is_silent,
+            "confidence": frame.confidence
+        }

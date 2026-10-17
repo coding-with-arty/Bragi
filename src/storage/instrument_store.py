@@ -1,251 +1,162 @@
-# src/storage/instrument_store.py
 import json
-from pathlib import Path
-from typing import List, Dict, Optional
-from models.instrument import InstrumentProfile, StringConfig
+from typing import List, Dict, Any, Optional, Tuple
 
 
+class InstrumentProfile:
+    """
+    Data structure representing an instrument tuning profile.
+    """
+
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        strings: List[Tuple[int, str, int]],
+        is_custom: bool = False,
+        category: Optional[str] = None
+    ):
+        self.id = id
+        self.name = name
+        self.strings = strings  # List of (string_number, note_name, octave)
+        self.is_custom = is_custom
+        self._category = category
+
+    @property
+    def category(self) -> str:
+        """
+        Returns the explicit instrument category or infers it from profile attributes.
+        """
+        if self._category:
+            return self._category
+        if self.is_custom:
+            return "Custom"
+
+        lower_identifier = f"{self.name} {self.id}".lower()
+        if "guitar" in lower_identifier:
+            return "Guitar"
+        elif "bass" in lower_identifier:
+            return "Bass"
+        elif "ukulele" in lower_identifier:
+            return "Ukulele"
+        elif "violin" in lower_identifier:
+            return "Violin"
+        return "Standard"
+
+    @property
+    def tuning(self) -> List[Tuple[int, str, int]]:
+        """Alias property for strings to satisfy component view callers."""
+        return self.strings
+
+    @property
+    def string_count(self) -> int:
+        """Returns the total number of strings configured for this instrument profile."""
+        return len(self.strings)
+
+    def to_tuning_tuples(self) -> List[Tuple[str, int]]:
+        """
+        Converts internal string definitions into a list of (note_name, octave) tuples
+        expected by TrainerView and other UI components.
+        """
+        result = []
+        for item in self.strings:
+            if isinstance(item, (list, tuple)):
+                if len(item) >= 3:
+                    result.append((str(item[1]), int(item[2])))
+                elif len(item) == 2:
+                    result.append((str(item[0]), int(item[1])))
+            elif isinstance(item, dict):
+                note = item.get("base_tuning", item.get("note", "E"))
+                octave = item.get("base_octave", item.get("octave", 4))
+                result.append((str(note), int(octave)))
+        return result
+
+
+# Standard built-in instrument tuning profiles
 BUILTIN_PROFILES: List[InstrumentProfile] = [
     InstrumentProfile(
-        id="guitar_6_std",
-        name="Guitar (6-String Standard)",
+        id="guitar_standard",
+        name="Guitar (Standard EADGBE)",
         category="Guitar",
-        string_count=6,
-        fret_count=24,
-        tuning=[
-            StringConfig(string_num=1, note_name="E", octave=4),
-            StringConfig(string_num=2, note_name="B", octave=3),
-            StringConfig(string_num=3, note_name="G", octave=3),
-            StringConfig(string_num=4, note_name="D", octave=3),
-            StringConfig(string_num=5, note_name="A", octave=2),
-            StringConfig(string_num=6, note_name="E", octave=2),
-        ],
-        fretboard_landmarks=[3, 5, 7, 9, 12, 15, 17, 19, 21, 24],
-        is_custom=False
+        strings=[(1, "E", 4), (2, "B", 3), (3, "G", 3), (4, "D", 3), (5, "A", 2), (6, "E", 2)]
     ),
     InstrumentProfile(
         id="guitar_drop_d",
-        name="Guitar (Drop D)",
+        name="Guitar (Drop D DADGBE)",
         category="Guitar",
-        string_count=6,
-        fret_count=24,
-        tuning=[
-            StringConfig(string_num=1, note_name="E", octave=4),
-            StringConfig(string_num=2, note_name="B", octave=3),
-            StringConfig(string_num=3, note_name="G", octave=3),
-            StringConfig(string_num=4, note_name="D", octave=3),
-            StringConfig(string_num=5, note_name="A", octave=2),
-            StringConfig(string_num=6, note_name="D", octave=2),
-        ],
-        fretboard_landmarks=[3, 5, 7, 9, 12, 15, 17, 19, 21, 24],
-        is_custom=False
+        strings=[(1, "E", 4), (2, "B", 3), (3, "G", 3), (4, "D", 3), (5, "A", 2), (6, "D", 2)]
     ),
     InstrumentProfile(
-        id="guitar_7_std",
-        name="Guitar (7-String Standard)",
-        category="Guitar",
-        string_count=7,
-        fret_count=24,
-        tuning=[
-            StringConfig(string_num=1, note_name="E", octave=4),
-            StringConfig(string_num=2, note_name="B", octave=3),
-            StringConfig(string_num=3, note_name="G", octave=3),
-            StringConfig(string_num=4, note_name="D", octave=3),
-            StringConfig(string_num=5, note_name="A", octave=2),
-            StringConfig(string_num=6, note_name="E", octave=2),
-            StringConfig(string_num=7, note_name="B", octave=1),
-        ],
-        fretboard_landmarks=[3, 5, 7, 9, 12, 15, 17, 19, 21, 24],
-        is_custom=False
-    ),
-    InstrumentProfile(
-        id="guitar_8_std",
-        name="Guitar (8-String Standard)",
-        category="Guitar",
-        string_count=8,
-        fret_count=24,
-        tuning=[
-            StringConfig(string_num=1, note_name="E", octave=4),
-            StringConfig(string_num=2, note_name="B", octave=3),
-            StringConfig(string_num=3, note_name="G", octave=3),
-            StringConfig(string_num=4, note_name="D", octave=3),
-            StringConfig(string_num=5, note_name="A", octave=2),
-            StringConfig(string_num=6, note_name="E", octave=2),
-            StringConfig(string_num=7, note_name="B", octave=1),
-            StringConfig(string_num=8, note_name="F#", octave=1),
-        ],
-        fretboard_landmarks=[3, 5, 7, 9, 12, 15, 17, 19, 21, 24],
-        is_custom=False
-    ),
-    InstrumentProfile(
-        id="bass_4_std",
-        name="Bass (4-String Standard)",
+        id="bass_standard",
+        name="Bass (Standard EADG)",
         category="Bass",
-        string_count=4,
-        fret_count=24,
-        tuning=[
-            StringConfig(string_num=1, note_name="G", octave=2),
-            StringConfig(string_num=2, note_name="D", octave=2),
-            StringConfig(string_num=3, note_name="A", octave=1),
-            StringConfig(string_num=4, note_name="E", octave=1),
-        ],
-        fretboard_landmarks=[3, 5, 7, 9, 12, 15, 17, 19, 21, 24],
-        is_custom=False
+        strings=[(1, "G", 2), (2, "D", 2), (3, "A", 1), (4, "E", 1)]
     ),
     InstrumentProfile(
-        id="bass_5_std",
-        name="Bass (5-String Standard)",
-        category="Bass",
-        string_count=5,
-        fret_count=24,
-        tuning=[
-            StringConfig(string_num=1, note_name="G", octave=2),
-            StringConfig(string_num=2, note_name="D", octave=2),
-            StringConfig(string_num=3, note_name="A", octave=1),
-            StringConfig(string_num=4, note_name="E", octave=1),
-            StringConfig(string_num=5, note_name="B", octave=0),
-        ],
-        fretboard_landmarks=[3, 5, 7, 9, 12, 15, 17, 19, 21, 24],
-        is_custom=False
-    ),
-    InstrumentProfile(
-        id="bass_6_std",
-        name="Bass (6-String Standard)",
-        category="Bass",
-        string_count=6,
-        fret_count=24,
-        tuning=[
-            StringConfig(string_num=1, note_name="C", octave=3),
-            StringConfig(string_num=2, note_name="G", octave=2),
-            StringConfig(string_num=3, note_name="D", octave=2),
-            StringConfig(string_num=4, note_name="A", octave=1),
-            StringConfig(string_num=5, note_name="E", octave=1),
-            StringConfig(string_num=6, note_name="B", octave=0),
-        ],
-        fretboard_landmarks=[3, 5, 7, 9, 12, 15, 17, 19, 21, 24],
-        is_custom=False
-    ),
-    InstrumentProfile(
-        id="ukulele_std",
-        name="Ukulele (Regular 4-String)",
+        id="ukulele_standard",
+        name="Ukulele (Standard GCEA)",
         category="Ukulele",
-        string_count=4,
-        fret_count=18,
-        tuning=[
-            StringConfig(string_num=1, note_name="A", octave=4),
-            StringConfig(string_num=2, note_name="E", octave=4),
-            StringConfig(string_num=3, note_name="C", octave=4),
-            StringConfig(string_num=4, note_name="G", octave=4),
-        ],
-        fretboard_landmarks=[5, 7, 10, 12, 15],
-        is_custom=False
+        strings=[(1, "A", 4), (2, "E", 4), (3, "C", 4), (4, "G", 4)]
     ),
     InstrumentProfile(
-        id="ukulele_baritone",
-        name="Ukulele (Baritone 4-String)",
-        category="Ukulele",
-        string_count=4,
-        fret_count=18,
-        tuning=[
-            StringConfig(string_num=1, note_name="E", octave=4),
-            StringConfig(string_num=2, note_name="B", octave=3),
-            StringConfig(string_num=3, note_name="G", octave=3),
-            StringConfig(string_num=4, note_name="D", octave=3),
-        ],
-        fretboard_landmarks=[5, 7, 10, 12, 15],
-        is_custom=False
-    ),
-    InstrumentProfile(
-        id="mandolin_std",
-        name="Mandolin (Standard 4-Course)",
-        category="Mandolin",
-        string_count=4,
-        fret_count=20,
-        tuning=[
-            StringConfig(string_num=1, note_name="E", octave=5),
-            StringConfig(string_num=2, note_name="A", octave=4),
-            StringConfig(string_num=3, note_name="D", octave=4),
-            StringConfig(string_num=4, note_name="G", octave=3),
-        ],
-        fretboard_landmarks=[3, 5, 7, 10, 12, 15],
-        is_custom=False
-    ),
-    InstrumentProfile(
-        id="banjo_5_std",
-        name="Banjo (5-String Open G)",
-        category="Banjo",
-        string_count=5,
-        fret_count=22,
-        tuning=[
-            StringConfig(string_num=1, note_name="D", octave=4),
-            StringConfig(string_num=2, note_name="B", octave=3),
-            StringConfig(string_num=3, note_name="G", octave=3),
-            StringConfig(string_num=4, note_name="D", octave=3),
-            StringConfig(string_num=5, note_name="G", octave=4),
-        ],
-        fretboard_landmarks=[3, 5, 7, 10, 12, 15, 17, 19, 22],
-        is_custom=False
+        id="violin_standard",
+        name="Violin (Standard GDAE)",
+        category="Violin",
+        strings=[(1, "E", 5), (2, "A", 4), (3, "D", 4), (4, "G", 3)]
     ),
 ]
 
 
 class InstrumentStore:
-    """Manages built-in instrument profiles and persisted custom user instruments."""
+    """
+    Manages built-in and custom user instrument tuning profiles.
+    """
 
-    def __init__(self, storage_path: Optional[Path] = None):
-        if storage_path is None:
-            data_dir = Path.home() / ".Bragi"
-            data_dir.mkdir(parents=True, exist_ok=True)
-            self.storage_file = data_dir / "custom_instruments.json"
-        else:
-            self.storage_file = storage_path
-
+    def __init__(self, storage_path: Optional[str] = None):
+        self.storage_path = storage_path
+        # Dictionary storing user-created custom profiles keyed by profile ID
         self._custom_profiles: Dict[str, InstrumentProfile] = {}
-        self._load_custom_instruments()
+        self.load_custom_profiles()
 
-    def get_all_profiles(self) -> List[InstrumentProfile]:
-        """Returns built-in profiles joined with user custom profiles."""
-        return BUILTIN_PROFILES + list(self._custom_profiles.values())
-
-    def get_profile_by_name(self, name: str) -> Optional[InstrumentProfile]:
-        """Finds profile matching title string."""
-        for prof in self.get_all_profiles():
-            if prof.name == name:
-                return prof
-        return None
-
-    def save_custom_instrument(self, profile: InstrumentProfile) -> bool:
-        """Saves or updates a custom InstrumentProfile on disk."""
-        updated = profile.model_copy(update={"is_custom": True})
-        self._custom_profiles[updated.id] = updated
-        return self._persist_to_disk()
-
-    def delete_custom_instrument(self, profile_id: str) -> bool:
-        """Deletes custom instrument by ID."""
-        if profile_id in self._custom_profiles:
-            del self._custom_profiles[profile_id]
-            return self._persist_to_disk()
-        return False
-
-    def _load_custom_instruments(self) -> None:
-        if not self.storage_file.exists():
+    def load_custom_profiles(self) -> None:
+        """Loads persistent custom profiles if a file path is provided."""
+        if not self.storage_path:
             return
         try:
-            with open(self.storage_file, "r", encoding="utf-8") as f:
+            with open(self.storage_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 for item in data:
-                    prof = InstrumentProfile.model_validate(item)
+                    prof = InstrumentProfile(
+                        id=item.get("id", "custom"),
+                        name=item.get("name", "Custom Instrument"),
+                        category=item.get("category", "Custom"),
+                        strings=[tuple(s) for s in item.get("strings", [])],
+                        is_custom=True
+                    )
                     self._custom_profiles[prof.id] = prof
-        except Exception as err:
-            print(f"[InstrumentStore] Failed to load custom instruments: {err}")
+        except (FileNotFoundError, json.JSONDecodeError, Exception):
+            pass
 
-    def _persist_to_disk(self) -> bool:
-        try:
-            self.storage_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.storage_file, "w", encoding="utf-8") as f:
-                json_data = [p.model_dump() for p in self._custom_profiles.values()]
-                json.dump(json_data, f, indent=2)
-            return True
-        except Exception as err:
-            print(f"[InstrumentStore] Failed to save custom instruments: {err}")
-            return False
+    def get_all_profiles(self) -> List[InstrumentProfile]:
+        """
+        Returns built-in profiles combined with user custom profiles.
+        """
+        return list(BUILTIN_PROFILES) + list(self._custom_profiles.values())
+
+    def get_profile(self, profile_id: str) -> InstrumentProfile:
+        """
+        Retrieves a profile by ID or name. Defaults to standard guitar if not found.
+        """
+        for prof in self.get_all_profiles():
+            if prof.id == profile_id or prof.name == profile_id:
+                return prof
+        return BUILTIN_PROFILES[0]
+
+    def add_custom_profile(self, profile: InstrumentProfile) -> None:
+        """Adds or updates a custom instrument profile."""
+        profile.is_custom = True
+        self._custom_profiles[profile.id] = profile
+
+    def remove_custom_profile(self, profile_id: str) -> None:
+        """Removes a custom profile by ID."""
+        if profile_id in self._custom_profiles:
+            del self._custom_profiles[profile_id]
