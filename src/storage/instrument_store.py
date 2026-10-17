@@ -194,7 +194,7 @@ class InstrumentStore:
 
     def __init__(self, storage_path: Optional[Path] = None):
         if storage_path is None:
-            data_dir = Path.home() / ".FretSense"
+            data_dir = Path.home() / ".Bragi"
             data_dir.mkdir(parents=True, exist_ok=True)
             self.storage_file = data_dir / "custom_instruments.json"
         else:

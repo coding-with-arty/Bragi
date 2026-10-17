@@ -32,18 +32,18 @@ jobs:
 
       - name: Build Executable
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name FretSense --paths src --add-data "assets:assets" main.py
+          pyinstaller --noconfirm --onedir --windowed --name Bragi --paths src --add-data "assets:assets" main.py
 
       - name: Compress Release
         run: |
           cd dist
-          tar -czvf FretSense-Linux.tar.gz FretSense
+          tar -czvf Bragi-Linux.tar.gz Bragi
 
       - name: Upload Linux Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           generate_release_notes: true
-          files: dist/FretSense-Linux.tar.gz
+          files: dist/Bragi-Linux.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,6 +1,6 @@
-# 🎸 FretSense v1.0.1 — Cross-Platform Release
+# 🎸 Bragi v1.0.1 — Cross-Platform Release
 
-Welcome to **FretSense v1.0.1**! This update introduces automated multi-platform builds, enhanced execution stability across operating systems, and streamlined standalone installers for Windows, macOS, and Linux.
+Welcome to **Bragi v1.0.1**! This update introduces automated multi-platform builds, enhanced execution stability across operating systems, and streamlined standalone installers for Windows, macOS, and Linux.
 
 ---
 
@@ -12,10 +12,10 @@ Welcome to **FretSense v1.0.1**! This update introduces automated multi-platform
 
 ---
 
-### How to Download and Run FretSense
+### How to Download and Run Bragi
 
 1. **Download the Application Zip:** 1-2 minutes.
-   Scroll down to the **Assets** section at the bottom of this release page and click on **`FretSense-v1.0.2-windows-x64.zip`** to save it to your computer.
+   Scroll down to the **Assets** section at the bottom of this release page and click on **`Bragi-v1.0.2-windows-x64.zip`** to save it to your computer.
 
 _Verification:_ Open your **Downloads** folder and confirm you see the downloaded `.zip` file.
 
@@ -25,11 +25,11 @@ _Verification:_ Open your **Downloads** folder and confirm you see the downloade
 _Verification:_ Open the newly extracted folder and confirm you see `main.exe` sitting right next to the `_internal` folder.
 
 3. **Launch the Application:** 30 seconds.
-   Double-click **`main.exe`** to open FretSense.
+   Double-click **`main.exe`** to open Bragi.
 
 _(If Windows displays a **"Windows protected your PC"** SmartScreen popup: Click **More info**, then click **Run anyway**)._
 
-_Verification:_ Confirm that the FretSense application window opens on your screen with the background image and controls loaded.
+_Verification:_ Confirm that the Bragi application window opens on your screen with the background image and controls loaded.
 
 ---
 

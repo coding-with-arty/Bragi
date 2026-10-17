@@ -20,7 +20,7 @@ class HelpDialog(ft.AlertDialog):
         title = ft.Row(
             controls=[
                 ft.Icon(ft.Icons.HELP_OUTLINE_ROUNDED, color=ft.Colors.AMBER_400, size=24),
-                ft.Text("FretSense User Guide", size=18, weight=ft.FontWeight.BOLD),
+                ft.Text("Bragi User Guide", size=18, weight=ft.FontWeight.BOLD),
             ],
             spacing=10,
         )
@@ -240,4 +240,3 @@ class HelpDialog(ft.AlertDialog):
         self.open = False
         if self.page:
             self.page.update()
-            

@@ -14,7 +14,7 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 
 
 def main(page: ft.Page):
-    page.title = "FretSense - Fretboard & Ear Trainer"
+    page.title = "Bragi - Fretboard & Ear Trainer"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
     page.spacing = 0
