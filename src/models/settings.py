@@ -24,7 +24,7 @@ class ValidationMode(str, Enum):
     """Chord matching stringency levels."""
     RELAXED_PITCH_CLASS = "Relaxed Pitch Class"  # Any matching set of pitch classes
     STRICT_VOICING = "Strict Voicing"            # Must match exact fretboard region / CAGED shape
-    ARPEGGIO_SEQUENCE = "Arpeggio Accumulator"   # Notes played sequentially over time window
+    ARPEGGIO_SEQUENCE = "Arpeggio Accumulator"   # Persistent note memory over time window
 
 
 class AudioSettings(BaseModel):
@@ -36,8 +36,8 @@ class AudioSettings(BaseModel):
     hop_size: int = Field(1024, ge=128, le=4096, description="Hop size between DSP frames")
     tolerance_cents: float = Field(25.0, ge=5.0, le=50.0, description="Pitch error tolerance in cents")
     min_volume_db: float = Field(-65.0, ge=-90.0, le=0.0, description="Silence threshold in dBFS")
-    hold_duration_sec: float = Field(0.08, ge=0.01, le=2.0, description="Required match hold duration")
-    arpeggio_window_sec: float = Field(3.5, ge=0.5, le=10.0, description="Accumulator memory duration")
+    hold_duration_sec: float = Field(0.0, ge=0.0, le=2.0, description="Instant trigger on target pitch match")
+    arpeggio_window_sec: float = Field(1.8, ge=0.5, le=10.0, description="Balanced 1.8s accumulator window")
     device_id: Optional[int] = Field(None, description="Selected input device index or None for default")
 
 
@@ -50,8 +50,10 @@ class ChordFilterSettings(BaseModel):
         description="Active chord qualities included in practice"
     )
     selected_keys: Set[str] = Field(
-        default_factory=lambda: {"C", "G", "D", "A", "E"},
-        description="Active musical keys included in practice"
+        default_factory=lambda: {
+            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+        },
+        description="Active musical keys included in practice across all 12 chromatic tones"
     )
     caged_positions: Set[CAGEDPosition] = Field(
         default_factory=lambda: {CAGEDPosition.NONE},
@@ -69,7 +71,10 @@ class TrainerSettings(BaseModel):
 
     detection_mode: DetectionMode = Field(DetectionMode.NOTE_DETECTION)
     practice_mode: PracticeMode = Field(PracticeMode.SPEED_FLASHCARD)
-    validation_mode: ValidationMode = Field(ValidationMode.RELAXED_PITCH_CLASS)
+    validation_mode: ValidationMode = Field(
+        ValidationMode.ARPEGGIO_SEQUENCE,
+        description="Defaults to Arpeggio Accumulator for persistent multi-note capture"
+    )
     timer_duration_sec: float = Field(3.0, ge=1.0, le=30.0)
     auto_advance: bool = Field(False, description="Auto advance when timer expires or note matched")
     audio_enabled: bool = Field(True, description="Microphone pitch detection active switch")

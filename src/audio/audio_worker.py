@@ -33,7 +33,6 @@ class AudioWorker:
         self._on_chord_matched = on_chord_matched
         self._on_chord_pitch_update = on_chord_pitch_update
 
-        # Relaxed match hold duration (0.08s) for instant chord completion
         self.note_evaluator = NoteEvaluator(
             tolerance_cents=self._settings.audio_settings.tolerance_cents,
             min_volume_db=self._settings.audio_settings.min_volume_db,
@@ -45,7 +44,7 @@ class AudioWorker:
             validation_mode=self._settings.validation_mode,
         )
 
-        # Extended memory duration (3.5s) for arpeggio accumulation
+        # 1.8s accumulator window for clean strum capture without note hanging
         self.arpeggio_buffer = ArpeggioBuffer(
             window_duration_sec=self._settings.audio_settings.arpeggio_window_sec
         )
@@ -186,8 +185,11 @@ class AudioWorker:
             min_volume_db=min_vol
         )
 
-        if chord_statement and chord_statement.is_correct and self._on_chord_matched:
-            try:
-                self._on_chord_matched(chord_statement)
-            except Exception as err:
-                sys.stderr.write(f"[AudioWorker] Chord match callback error: {err}\n")
+        # Trigger success instantly and reset buffer for next chord
+        if chord_statement and chord_statement.is_correct:
+            self.arpeggio_buffer.clear()
+            if self._on_chord_matched:
+                try:
+                    self._on_chord_matched(chord_statement)
+                except Exception as err:
+                    sys.stderr.write(f"[AudioWorker] Chord match callback error: {err}\n")
