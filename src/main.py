@@ -17,14 +17,18 @@ def main(page: ft.Page) -> None:
     get_app_data_dir()
 
     # Configure top-level window properties
-    page.title = "Bragi - String Instrument Fretboard Mastery"
+    page.title = "Bragi - Stringed Instrument Fret Mastery Tool"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
     page.spacing = 0
-    page.window.width = 1100
-    page.window.height = 750
-    page.window.min_width = 800
-    page.window.min_height = 600
+    page.window.width = 1200
+    page.window.height = 1000
+    page.window.min_width = 1024
+    page.window.min_height = 700
+
+    # Safely center window across sync and async Flet versions
+    if hasattr(page, "window_center"):
+        page.window_center()
 
     # Initialize shared repository
     repository = ProgressRepository()

@@ -113,22 +113,24 @@ class TrainerView(ft.Column):
             on_click=self._toggle_fretboard_help,
         )
 
+        # In src/views/trainer_view.py inside __init__:
+
         self.filter_panel = FilterPanel(
             settings=self.settings,
             on_settings_changed=self.on_settings_changed,
             theme_manager=self.theme_manager
         )
 
+# Responsive sidebar container that fits options without dead space
         self.sidebar_container = ft.Container(
             content=ft.Column(
                 controls=[self.filter_panel],
-                spacing=16,
-                scroll=ft.ScrollMode.AUTO,
+                spacing=0,
+                tight=True,  # Shrink-wrap container height snugly
             ),
-            padding=18,
+            padding=12,
             border_radius=18,
             shadow=ft.BoxShadow(blur_radius=20, color=ft.Colors.with_opacity(0.3, "#000000")),
-            height=650,
         )
 
         # Fixed height wrapper for display elements prevents window size popping

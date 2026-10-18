@@ -2,12 +2,12 @@
 """
 Audio Processing Worker Thread
 ==============================
-Executes background audio analysis, pitch matching, and chord evaluation loops.
+Executes background audio analysis, pitch matching, and arpeggiated chord evaluation loops.
 """
 
 import threading
 import time
-from typing import Callable, Optional, Set
+from typing import Callable, Optional, Set, Dict
 
 from models.settings import TrainerSettings, DetectionMode
 from engine.note_evaluator import NoteEvaluator, EvaluatedPitchPayload, SingleNoteMatchStatement
@@ -36,6 +36,9 @@ class AudioWorker:
         self.on_chord_matched = on_chord_matched
         self.on_chord_pitch_update = on_chord_pitch_update
 
+        # Sliding time-window accumulator for strummed/arpeggiated chord pitch classes
+        self._chord_note_history: Dict[int, float] = {}
+
         self._is_running = False
         self._thread: Optional[threading.Thread] = None
 
@@ -50,6 +53,10 @@ class AudioWorker:
         self._is_running = False
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=0.5)
+
+    def reset_chord_history(self) -> None:
+        """Clears accumulated chord pitches when changing target chords."""
+        self._chord_note_history.clear()
 
     def update_settings(self, new_settings: TrainerSettings) -> None:
         self.settings = new_settings
@@ -66,6 +73,7 @@ class AudioWorker:
             self.note_evaluator.set_target_note(note_name, octave)
 
     def set_target_chord(self, chord: object) -> None:
+        self.reset_chord_history()
         if hasattr(self.chord_evaluator, "set_target"):
             self.chord_evaluator.set_target(chord)
 
@@ -101,8 +109,6 @@ class AudioWorker:
 
         target_note = getattr(self.note_evaluator, "target_note", "").strip().upper()
         detected_clean = note_name.strip().upper()
-
-        # Clean digits from note string (e.g. convert "E4" -> "E") for note-only target matching
         detected_note_only = "".join([c for c in detected_clean if not c.isdigit()])
 
         is_note_match = (
@@ -141,18 +147,41 @@ class AudioWorker:
         vol_db = state.get("volume_db", -80.0)
         pdata = state.get("pitch_data", {})
 
-        pcs: Set[int] = set()
         if isinstance(pdata, dict):
+            is_silent = pdata.get("is_silent", state.get("is_silent", True))
+            vol_db = pdata.get("volume_db", vol_db)
             pc_val = pdata.get("pitch_class")
-            if pc_val is not None:
-                pcs.add(int(pc_val) % 12)
-        elif hasattr(pdata, "pitch_class"):
-            pcs.add(getattr(pdata, "pitch_class") % 12)
+        else:
+            is_silent = getattr(pdata, "is_silent", True)
+            vol_db = getattr(pdata, "volume_db", vol_db)
+            pc_val = getattr(pdata, "pitch_class", None)
 
+        # In src/audio/audio_worker.py inside _process_chord_mode():
+
+        now = time.time()
+        audio_sets = getattr(self.settings, "audio_settings", None)
+        # Increased window to 2.5s for arpeggiating 4-note 7th chords
+        window_sec = getattr(audio_sets, "arpeggio_window_sec", 2.5) if audio_sets else 2.5
+
+        # 1. Store non-silent pitches into history buffer
+        if not is_silent and pc_val is not None and vol_db >= -50.0:
+            self._chord_note_history[int(pc_val) % 12] = now
+
+        # 2. Expire pitch classes outside the expanded arpeggio window
+        expired = [pc for pc, ts in self._chord_note_history.items() if (now - ts) > window_sec]
+        for pc in expired:
+            del self._chord_note_history[pc]
+
+        accumulated_pcs = set(self._chord_note_history.keys())
+
+        # 3. Dispatch pitch badges update to UI
         if self.on_chord_pitch_update:
-            self.on_chord_pitch_update(pcs, vol_db)
+            self.on_chord_pitch_update(accumulated_pcs, vol_db)
 
-        is_valid, statement = self.chord_evaluator.evaluate_pitch_classes(pcs, volume_db=vol_db)
-        if is_valid and statement is not None and statement.is_correct:
-            if self.on_chord_matched:
-                self.on_chord_matched(statement)
+        # 4. Evaluate accumulated pitch set against target chord
+        if accumulated_pcs:
+            is_valid, statement = self.chord_evaluator.evaluate_pitch_classes(accumulated_pcs, volume_db=vol_db)
+            if is_valid and statement is not None and statement.is_correct:
+                self.reset_chord_history()
+                if self.on_chord_matched:
+                    self.on_chord_matched(statement)
