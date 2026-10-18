@@ -266,8 +266,8 @@ class AppLayout(ft.Container):
         self.body_container.content = new_view
         self.main_page.update()
 
-        if hasattr(new_view, "did_mount"):
-            new_view.did_mount()
+        # if hasattr(new_view, "did_mount"):
+        #     new_view.did_mount()
 
         if self.current_index == 3 and hasattr(self.progress_view, "refresh_stats"):
             self.progress_view.refresh_stats()
