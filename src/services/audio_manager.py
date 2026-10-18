@@ -3,7 +3,7 @@
 Audio Manager Singleton
 =======================
 Handles hardware microphone capture, real-time autocorrelation pitch detection,
-device filtering, and audio sample distribution.
+device filtering, and audio sample distribution with low-frequency bass optimization.
 """
 
 import math
@@ -14,7 +14,7 @@ from utils.music_theory import CHROMATIC_SHARPS
 
 
 class PitchDetector:
-    """Real-time pitch detector using FFT autocorrelation and peak interpolation."""
+    """Real-time pitch detector using FFT autocorrelation, peak normalization, and sub-sample interpolation."""
 
     def __init__(self, sample_rate: int = 44100):
         self.sample_rate = sample_rate
@@ -33,11 +33,16 @@ class PitchDetector:
             }
 
         sr = sample_rate or self.sample_rate
-        rms = np.sqrt(np.mean(samples**2))
+
+        # 1. Remove DC offset to center the waveform
+        centered_samples = samples - np.mean(samples)
+
+        # 2. Compute RMS volume before normalization
+        rms = np.sqrt(np.mean(centered_samples**2))
         volume_db = 20.0 * math.log10(rms) if rms > 1e-5 else -80.0
 
-        # Silence gating threshold
-        if volume_db < -42.0:
+        # Silence gating threshold (-52 dBFS allows quiet low strings to register)
+        if volume_db < -52.0:
             return {
                 "pitch": 0.0,
                 "frequency": 0.0,
@@ -48,11 +53,18 @@ class PitchDetector:
                 "pitch_class": 0,
             }
 
-        # Apply Hanning window to reduce boundary spectral leakage
-        windowed = samples * np.hanning(len(samples))
+        # 3. Software Peak Normalization (boosts low signals safely without hardware clipping)
+        max_amplitude = np.max(np.abs(centered_samples))
+        if max_amplitude > 1e-4:
+            normalized_samples = centered_samples / max_amplitude
+        else:
+            normalized_samples = centered_samples
+
+        # 4. Apply Hanning window to prevent spectral leakage
+        windowed = normalized_samples * np.hanning(len(normalized_samples))
         n = len(windowed)
 
-        # Calculate autocorrelation via FFT
+        # 5. Calculate autocorrelation via FFT
         f = np.fft.rfft(windowed, n=2 * n)
         acf = np.fft.irfft(f * np.conj(f))[:n]
 
@@ -69,11 +81,11 @@ class PitchDetector:
 
         acf = acf / acf[0]
 
-        # Instrument frequency bounds (E1 ~40 Hz to E6 ~1300 Hz)
-        min_period = max(1, int(sr / 1300))
-        max_period = min(len(acf) - 2, int(sr / 40))
+        # 6. Expanded frequency search bounds (30 Hz ~ Low B on 5-string bass up to 1400 Hz)
+        min_period = max(1, int(sr / 1400))
+        max_period = min(len(acf) - 2, int(sr / 30))
 
-        if min_period >= max_period:
+        if min_period >= max_period or max_period >= len(acf):
             return {
                 "pitch": 0.0,
                 "frequency": 0.0,
@@ -99,8 +111,8 @@ class PitchDetector:
         peak_idx = np.argmax(lag_search) + min_period
         peak_val = acf[peak_idx]
 
-        # Unpitched audio noise filter threshold
-        if peak_val < 0.25:
+        # Relaxed peak threshold (0.18) allows low fundamental frequencies to register
+        if peak_val < 0.18:
             return {
                 "pitch": 0.0,
                 "frequency": 0.0,
@@ -111,7 +123,7 @@ class PitchDetector:
                 "pitch_class": 0,
             }
 
-        # Parabolic interpolation for sub-sample accuracy
+        # 7. Parabolic interpolation for sub-sample accuracy
         if 0 < peak_idx < len(acf) - 1:
             alpha = acf[peak_idx - 1]
             beta = acf[peak_idx]
@@ -135,7 +147,7 @@ class PitchDetector:
 
         freq_hz = sr / fine_period
 
-        # Convert Hz to MIDI Note Number (A4 = 440Hz = MIDI 69)
+        # 8. Convert Hz to MIDI Note & Cents Error (A4 = 440 Hz = MIDI 69)
         midi_note = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
         nearest_midi = int(round(midi_note))
         cents_error = (midi_note - nearest_midi) * 100.0
@@ -166,7 +178,9 @@ class AudioManager:
         self.stream: Optional[sd.InputStream] = None
         self.current_device_id: Optional[int] = None
         self.sample_rate: int = 44100
-        self.block_size: int = 2048
+
+        # Expanded block_size to 4096 for reliable low E / bass guitar detection
+        self.block_size: int = 4096
         self.is_listening: bool = False
 
         self.detector = PitchDetector(self.sample_rate)
