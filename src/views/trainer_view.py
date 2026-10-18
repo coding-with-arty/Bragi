@@ -1,4 +1,11 @@
 # src/views/trainer_view.py
+"""
+Trainer View
+============
+Main practice view managing flashcard display, real-time audio evaluation,
+fretboard hints, and thread-safe target auto-advancement.
+"""
+
 import asyncio
 import time
 from typing import Optional, Set, List, Tuple
@@ -15,7 +22,7 @@ from models.settings import TrainerSettings, DetectionMode, PracticeMode
 from models.chord import TargetChord, ChordMatchStatement
 from models.instrument import InstrumentProfile
 from models.progress import AttemptRecord
-from storage.instrument_store import InstrumentStore, BUILTIN_PROFILES
+from storage.instrument_store import InstrumentStore
 from storage.progress_repository import ProgressRepository
 from engine.note_evaluator import SingleNoteMatchStatement, EvaluatedPitchPayload
 from engine.chord_generator import ChordGenerator
@@ -37,23 +44,22 @@ class TrainerView(ft.Column):
         self.repository = repository or ProgressRepository()
         self.expand = True
         self._is_transitioning = False
+        self._is_mounted = False
+        self.main_loop: Optional[asyncio.AbstractEventLoop] = None
 
         self.settings = TrainerSettings()
         self.instrument_store = InstrumentStore()
-        self.active_profile: InstrumentProfile = BUILTIN_PROFILES[0]
 
-        # Base Tuning State
+        self.active_profile: InstrumentProfile = self.instrument_store.get_default_profile()
         self.current_tuning: List[Tuple[str, int]] = self.active_profile.to_tuning_tuples()
         self.num_strings: int = len(self.current_tuning)
 
-        # Practice Metrics & Timing State
         self.timer_duration_sec = 3
         self.auto_advance_enabled = False
         self.target_start_time = time.time()
         self.current_target_note = "E"
         self.current_target_octave = 2
 
-        # Audio Engine Setup - Share singleton PitchDetector from AudioManager
         self.detector = AudioManager.get_instance().detector
         self.worker = AudioWorker(
             pitch_detector=self.detector,
@@ -64,7 +70,6 @@ class TrainerView(ft.Column):
             on_chord_pitch_update=self._on_chord_pitch_update,
         )
 
-        # Timer Setup
         self.timer = TrainerTimer(
             duration=self.timer_duration_sec,
             mode=PracticeMode.SPEED_FLASHCARD,
@@ -73,7 +78,6 @@ class TrainerView(ft.Column):
             on_timeout=self.on_timer_timeout,
         )
 
-        # Visualizers
         self.note_display = NoteDisplay(
             on_next_click=self.generate_next_target,
             theme_manager=self.theme_manager
@@ -84,7 +88,6 @@ class TrainerView(ft.Column):
         )
         self.chord_display.visible = False
 
-        # Interactive Fretboard Map (Hidden by default)
         self.fretboard_view = FretboardView(
             profile=self.active_profile,
             visible_frets=15,
@@ -93,7 +96,6 @@ class TrainerView(ft.Column):
         )
         self.fretboard_view.visible = False
 
-        # Help / Hint Toggle Button
         self.fretboard_help_btn = ft.Container(
             content=ft.Row(
                 controls=[
@@ -111,7 +113,6 @@ class TrainerView(ft.Column):
             on_click=self._toggle_fretboard_help,
         )
 
-        # Sidebar Filter Panel
         self.filter_panel = FilterPanel(
             settings=self.settings,
             on_settings_changed=self.on_settings_changed,
@@ -120,9 +121,7 @@ class TrainerView(ft.Column):
 
         self.sidebar_container = ft.Container(
             content=ft.Column(
-                controls=[
-                    self.filter_panel,
-                ],
+                controls=[self.filter_panel],
                 spacing=16,
                 scroll=ft.ScrollMode.AUTO,
             ),
@@ -132,7 +131,7 @@ class TrainerView(ft.Column):
             height=650,
         )
 
-        # Scrollable Display Column for handling dynamic expansion
+        # Fixed height wrapper for display elements prevents window size popping
         self.display_column = ft.Column(
             controls=[
                 self.note_display,
@@ -183,27 +182,21 @@ class TrainerView(ft.Column):
 
     def did_mount(self):
         self._is_mounted = True
+        try:
+            self.main_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.main_loop = None
+
         self.apply_instrument_profile(self.active_profile)
         AudioManager.get_instance().subscribe(self._on_audio_manager_update)
         self._sync_audio_device()
         AudioManager.get_instance().start_listening()
         self.worker.start()
-        asyncio.create_task(self._live_trainer_ui_loop())
 
     def will_unmount(self):
         self._is_mounted = False
         AudioManager.get_instance().unsubscribe(self._on_audio_manager_update)
         self.worker.stop()
-
-    async def _live_trainer_ui_loop(self):
-        """Main-thread UI loop pushing pitch feedback to Trainer controls (~25 FPS)."""
-        while self._is_mounted:
-            if self.page:
-                try:
-                    self.update()
-                except Exception:
-                    pass
-            await asyncio.sleep(0.04)
 
     def _sync_audio_device(self):
         dev_id = AudioManager.get_instance().current_device_id
@@ -215,7 +208,6 @@ class TrainerView(ft.Column):
             self._sync_audio_device()
 
     def _toggle_fretboard_help(self, e=None):
-        """Toggles visibility of the interactive fretboard hint map."""
         self.fretboard_view.visible = not self.fretboard_view.visible
 
         if self.fretboard_view.visible:
@@ -232,8 +224,6 @@ class TrainerView(ft.Column):
             self.fretboard_help_btn.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.AMBER_400)
 
         self.update()
-        if self.page:
-            self.page.update()
 
     def set_timer_duration(self, duration_sec: int) -> None:
         self.timer_duration_sec = duration_sec
@@ -274,8 +264,6 @@ class TrainerView(ft.Column):
         self.fretboard_view.set_instrument_profile(profile)
 
         self.generate_next_target()
-        if self.page:
-            self.page.update()
 
     def apply_theme(self):
         is_dark = self.theme_manager.is_dark()
@@ -297,8 +285,6 @@ class TrainerView(ft.Column):
             self.chord_display.visible = True
 
         self.generate_next_target()
-        if self.page:
-            self.page.update()
 
     def on_timer_tick(self, elapsed: float, remaining: float, progress: float):
         if self.auto_advance_enabled:
@@ -321,7 +307,7 @@ class TrainerView(ft.Column):
                 if i < len(self.current_tuning):
                     note, oct = self.current_tuning[i]
                 else:
-                    note, oct = ("E", 2)
+                    note, oct = ("E", 4)
 
                 active_strings.append({
                     "string_num": i + 1,
@@ -349,23 +335,29 @@ class TrainerView(ft.Column):
             asyncio.create_task(self.timer.start(self.timer_duration_sec))
 
         if update_page and self.page:
-            self.page.update()
+            try:
+                self.page.update()
+            except Exception:
+                pass
 
     def _on_fret_clicked(self, string_num: int, fret: int, note_name: str, octave: int) -> None:
-        """Handles manual user touch interactions on the fretboard map."""
-        if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
+        if self.settings.detection_mode == DetectionMode.NOTE_DETECTION and not self._is_transitioning:
             is_match = (note_name.upper() == self.current_target_note.upper())
             self._log_attempt_to_repository(is_success=is_match)
             if is_match:
+                self._is_transitioning = True
                 self.note_display.update_pitch_feedback(f"{note_name}{octave}", 0.0, True)
-                def delayed_advance():
-                    time.sleep(0.5)
+
+                async def delayed_advance():
+                    await asyncio.sleep(0.5)
                     self.generate_next_target()
-                if self.page:
-                    self.page.run_thread(delayed_advance)
+
+                if self.main_loop and self.main_loop.is_running():
+                    asyncio.run_coroutine_threadsafe(delayed_advance(), self.main_loop)
+                else:
+                    self.generate_next_target()
 
     def _log_attempt_to_repository(self, is_success: bool) -> None:
-        """Persists exercise attempt data into SQLite for analytics & XP progression."""
         response_time = max(0.1, time.time() - self.target_start_time)
         record = AttemptRecord(
             target_name=self.current_target_note,
@@ -392,12 +384,15 @@ class TrainerView(ft.Column):
         self._is_transitioning = True
         self._log_attempt_to_repository(is_success=True)
 
-        def delayed_advance():
-            time.sleep(0.5)
+        async def delayed_advance():
+            await asyncio.sleep(0.5)
             self.generate_next_target()
 
-        if self.page:
-            self.page.run_thread(delayed_advance)
+        # Safely execute delayed advance on Flet's main asyncio event loop
+        if self.main_loop and self.main_loop.is_running():
+            asyncio.run_coroutine_threadsafe(delayed_advance(), self.main_loop)
+        else:
+            self.generate_next_target()
 
     def _on_chord_matched(self, statement: ChordMatchStatement):
         if self._is_transitioning or not statement.is_correct:
@@ -407,9 +402,11 @@ class TrainerView(ft.Column):
         self._log_attempt_to_repository(is_success=True)
         self.chord_display.update_pitch_feedback(statement.detected_pitch_classes, is_correct=True)
 
-        def delayed_advance():
-            time.sleep(0.6)
+        async def delayed_advance():
+            await asyncio.sleep(0.6)
             self.generate_next_target()
 
-        if self.page:
-            self.page.run_thread(delayed_advance)
+        if self.main_loop and self.main_loop.is_running():
+            asyncio.run_coroutine_threadsafe(delayed_advance(), self.main_loop)
+        else:
+            self.generate_next_target()

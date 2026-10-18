@@ -88,18 +88,22 @@ class EarTrainingView(ft.Column):
         )
 
         self.controls = [
+            # Header Container with right=260 padding offset to avoid overlapping floating action bar
             ft.Container(
                 content=ft.Row(
                     controls=[self.title_text, self.score_text],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    wrap=True,
                 ),
-                padding=16,
+                padding=ft.Padding.only(left=16, top=12, right=260, bottom=8),
             ),
             ft.Container(
                 content=ft.Row(
                     controls=[self.category_dropdown, self.difficulty_dropdown],
                     alignment=ft.MainAxisAlignment.CENTER,
                     spacing=12,
+                    wrap=True,
                 ),
                 padding=ft.Padding.symmetric(horizontal=16, vertical=8),
             ),
@@ -163,19 +167,25 @@ class EarTrainingView(ft.Column):
         if not q:
             return
 
+        # Safely extract pitch classes
+        pcs_raw = getattr(q, "pitch_classes", None) or getattr(q, "target_pcs", None) or set()
+        pcs = set(pcs_raw) if isinstance(pcs_raw, (set, list, tuple)) else set()
+
         if q.category == EarTrainingCategory.SINGLE_NOTE:
-            pc = list(q.pitch_classes)[0] if q.pitch_classes else 0
-            self.audio_synth.play_note_async(pc, q.octave)
+            pc = list(pcs)[0] if pcs else 0
+            self.audio_synth.play_note_async(pc, getattr(q, "octave", 4))
         elif q.category == EarTrainingCategory.INTERVAL:
-            pcs = sorted(list(q.pitch_classes))
-            if len(pcs) >= 2:
-                pc1, pc2 = pcs[0], pcs[1]
-                oct2 = q.second_note_octave or q.octave
-                self.audio_synth.play_interval_async(pc1, q.octave, pc2, oct2, q.interval_mode.value)
-            elif len(pcs) == 1:
-                self.audio_synth.play_note_async(pcs[0], q.octave)
+            sorted_pcs = sorted(list(pcs))
+            if len(sorted_pcs) >= 2:
+                pc1, pc2 = sorted_pcs[0], sorted_pcs[1]
+                oct1 = getattr(q, "octave", 4)
+                oct2 = getattr(q, "second_note_octave", None) or oct1
+                mode_val = getattr(q.interval_mode, "value", "Harmonic (Simultaneous)") if hasattr(q, "interval_mode") else "Harmonic (Simultaneous)"
+                self.audio_synth.play_interval_async(pc1, oct1, pc2, oct2, mode_val)
+            elif len(sorted_pcs) == 1:
+                self.audio_synth.play_note_async(sorted_pcs[0], getattr(q, "octave", 4))
         else:
-            self.audio_synth.play_chord_async(q.pitch_classes, q.octave)
+            self.audio_synth.play_chord_async(pcs, getattr(q, "octave", 4))
 
     def _check_answer(self, selected_name: str) -> None:
         q = self.current_question

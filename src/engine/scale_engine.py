@@ -1,19 +1,21 @@
+# src/engine/scale_engine.py
 from enum import Enum
-from dataclasses import dataclass
-from typing import List, Optional, Set
-from models.audio_frame import AudioFrame
-from utils.music_theory import CHROMATIC_SHARPS, MusicTheory
+from typing import List, Tuple, Dict, Set, Optional
+from models.instrument import InstrumentProfile
+from instruments.base_instrument import BaseInstrument
+from instruments.universal_instrument import UniversalInstrumentProfile
+from utils.music_theory import MusicTheory, NOTE_TO_PITCH_INDEX, CHROMATIC_SHARPS
+from utils.music_theory import MusicTheory, NOTE_TO_PITCH_INDEX, CHROMATIC_FLATS
 
 
-class ScaleType(Enum):
+class ScaleType(str, Enum):
     MAJOR = "Major"
     NATURAL_MINOR = "Natural Minor"
     MAJOR_PENTATONIC = "Major Pentatonic"
     MINOR_PENTATONIC = "Minor Pentatonic"
 
 
-# Interval semitone formulas relative to the root note
-SCALE_FORMULAS = {
+SCALE_FORMULAS: Dict[ScaleType, List[int]] = {
     ScaleType.MAJOR: [0, 2, 4, 5, 7, 9, 11],
     ScaleType.NATURAL_MINOR: [0, 2, 3, 5, 7, 8, 10],
     ScaleType.MAJOR_PENTATONIC: [0, 2, 4, 7, 9],
@@ -21,118 +23,98 @@ SCALE_FORMULAS = {
 }
 
 
-@dataclass(frozen=True)
-class ScaleStep:
-    """Represents a single note step within an active scale practice sequence."""
-    step_index: int
-    note_name: str
-    pitch_class: int
-    octave: int
-    is_completed: bool = False
+class ScaleDefinition:
+    """Represents a specific key and scale combination."""
 
+    def __init__(self, root_note: str, scale_type: ScaleType):
+        clean_root = root_note.strip().upper()
+        if clean_root not in NOTE_TO_PITCH_INDEX:
+            raise ValueError(f"Invalid root note: '{root_note}'")
 
-@dataclass
-class ScaleSequenceState:
-    """Active state of a scale exercise run."""
-    root_note: str
-    scale_type: ScaleType
-    steps: List[ScaleStep]
-    current_step_index: int = 0
-    is_completed: bool = False
+        self.root_note = clean_root
+        self.scale_type = scale_type
+        self.root_pitch_class = NOTE_TO_PITCH_INDEX[clean_root]
+
+        offsets = SCALE_FORMULAS.get(scale_type, [0, 2, 4, 5, 7, 9, 11])
+        self.pitch_classes: Set[int] = {(self.root_pitch_class + offset) % 12 for offset in offsets}
+        self.ordered_pitch_classes: List[int] = [(self.root_pitch_class + offset) % 12 for offset in offsets]
+
+    def get_note_names(self, use_flats: bool = False) -> List[str]:
+        """Returns the list of note names for the scale degrees."""
+        return [MusicTheory.pitch_class_to_note(pc, use_flats=use_flats) for pc in self.ordered_pitch_classes]
 
 
 class ScaleEngine:
-    """
-    Generates scale step sequences and evaluates live audio pitch frames
-    against the active target scale step.
-    """
+    """Calculates fretboard layout overlays and note mappings for scales."""
 
     @staticmethod
-    def generate_scale_sequence(
-        root_note: str,
-        scale_type: ScaleType,
-        start_octave: int = 3,
-        num_octaves: int = 1
-    ) -> ScaleSequenceState:
-        """Constructs an ascending and descending scale step sequence."""
-        root_pc = MusicTheory.note_to_pitch_class(root_note)
-        semitones = SCALE_FORMULAS[scale_type]
-
-        steps: List[ScaleStep] = []
-        step_idx = 0
-
-        # Build ascending scale notes
-        for oct_offset in range(num_octaves):
-            for semi in semitones:
-                abs_pc = (root_pc + semi) % 12
-                octave_shift = (root_pc + semi) // 12
-                note_name = CHROMATIC_SHARPS[abs_pc]
-                octave = start_octave + oct_offset + octave_shift
-
-                steps.append(
-                    ScaleStep(
-                        step_index=step_idx,
-                        note_name=note_name,
-                        pitch_class=abs_pc,
-                        octave=octave,
-                    )
-                )
-                step_idx += 1
-
-        # Add top root note octave anchor
-        top_root_pc = root_pc
-        top_octave = start_octave + num_octaves
-        steps.append(
-            ScaleStep(
-                step_index=step_idx,
-                note_name=CHROMATIC_SHARPS[top_root_pc],
-                pitch_class=top_root_pc,
-                octave=top_octave,
-            )
-        )
-
-        return ScaleSequenceState(
-            root_note=root_note,
-            scale_type=scale_type,
-            steps=steps,
-            current_step_index=0,
-            is_completed=False,
-        )
-
-    @staticmethod
-    def evaluate_frame(
-        state: ScaleSequenceState,
-        frame: AudioFrame,
-        require_octave_match: bool = False
-    ) -> bool:
+    def calculate_scale_positions(
+        profile: InstrumentProfile,
+        scale_def: ScaleDefinition,
+        max_frets: int = 15
+    ) -> List[Tuple[int, int, str, bool]]:
         """
-        Evaluates current audio frame against active scale step index.
-        Advances to the next step index if the note is correctly matched.
+        Calculates all matching fret coordinates on the neck for a scale.
+        Returns a list of tuples: (string_num, fret_num, note_name, is_root)
         """
-        if state.is_completed or frame.is_silent or frame.pitch_class == "--":
+        univ = UniversalInstrumentProfile(profile)
+        locations = []
+        tuning = profile.to_tuning_tuples()
+
+        for s_idx in range(len(tuning)):
+            string_num = s_idx + 1
+            open_midi = univ.get_open_string_midi(string_num)
+
+            for fret in range(0, min(max_frets, profile.fret_count) + 1):
+                target_midi = open_midi + fret
+                note_name, _ = BaseInstrument.midi_to_note(target_midi)
+                pc = NOTE_TO_PITCH_INDEX.get(note_name.upper(), 0)
+
+                if pc in scale_def.pitch_classes:
+                    is_root = (pc == scale_def.root_pitch_class)
+                    locations.append((string_num, fret, note_name, is_root))
+
+        return locations
+
+
+class ScaleSequencer:
+    """Tracks step-by-step user progress through a scale sequence exercise."""
+
+    def __init__(self, scale_def: ScaleDefinition, ascending: bool = True):
+        self.scale_def = scale_def
+        self.ascending = ascending
+        self.sequence_pcs = list(scale_def.ordered_pitch_classes)
+        if not ascending:
+            self.sequence_pcs.reverse()
+
+        self.current_step_index = 0
+        self.is_completed = False
+
+    @property
+    def current_target_pitch_class(self) -> int:
+        if self.is_completed:
+            return -1
+        return self.sequence_pcs[self.current_step_index]
+
+    @property
+    def current_target_note_name(self) -> str:
+        if self.is_completed:
+            return "COMPLETE"
+        return MusicTheory.pitch_class_to_note(self.current_target_pitch_class)
+
+    def evaluate_note(self, detected_pitch_class: int) -> bool:
+        """Evaluates detected pitch against active step. Advances step index if matched."""
+        if self.is_completed or detected_pitch_class < 0:
             return False
 
-        target_step = state.steps[state.current_step_index]
-        detected_pc = MusicTheory.note_to_pitch_class(frame.pitch_class)
-
-        pc_match = (target_step.pitch_class == detected_pc)
-        oct_match = (target_step.octave == frame.octave) if require_octave_match else True
-
-        if pc_match and oct_match:
-            # Mark current step completed and advance cursor
-            updated_step = ScaleStep(
-                step_index=target_step.step_index,
-                note_name=target_step.note_name,
-                pitch_class=target_step.pitch_class,
-                octave=target_step.octave,
-                is_completed=True,
-            )
-            state.steps[state.current_step_index] = updated_step
-            state.current_step_index += 1
-
-            if state.current_step_index >= len(state.steps):
-                state.is_completed = True
-
+        if detected_pitch_class % 12 == self.current_target_pitch_class:
+            self.current_step_index += 1
+            if self.current_step_index >= len(self.sequence_pcs):
+                self.is_completed = True
             return True
 
         return False
+
+    def reset(self) -> None:
+        self.current_step_index = 0
+        self.is_completed = False

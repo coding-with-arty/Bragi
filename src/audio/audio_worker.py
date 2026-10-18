@@ -1,195 +1,158 @@
 # src/audio/audio_worker.py
-import sys
+"""
+Audio Processing Worker Thread
+==============================
+Executes background audio analysis, pitch matching, and chord evaluation loops.
+"""
+
 import threading
 import time
-from typing import Callable, Optional, Any, Dict, Set
+from typing import Callable, Optional, Set
 
-from models.settings import TrainerSettings, DetectionMode, ValidationMode
-from models.chord import TargetChord, ChordMatchStatement
-from engine.note_evaluator import NoteEvaluator, SingleNoteMatchStatement, EvaluatedPitchPayload
-from engine.chord_evaluator import ChordEvaluator
-from engine.arpeggio_buffer import ArpeggioBuffer
-from audio.chord_detector import ChordDetector
-from utils.music_theory import NOTE_TO_PITCH_INDEX
+from models.settings import TrainerSettings, DetectionMode
+from engine.note_evaluator import NoteEvaluator, EvaluatedPitchPayload, SingleNoteMatchStatement
+from engine.chord_evaluator import ChordEvaluator, ChordEvaluationStatement
+from services.audio_manager import AudioManager
 
 
 class AudioWorker:
-    """Unified audio processing worker dispatching frames to note or chord evaluators."""
+    """Background worker thread processing pitch evaluation payloads (~25-50 Hz)."""
 
     def __init__(
         self,
-        pitch_detector: Any,
+        pitch_detector: Optional[object] = None,
         settings: Optional[TrainerSettings] = None,
         on_pitch_update: Optional[Callable[[EvaluatedPitchPayload], None]] = None,
         on_note_matched: Optional[Callable[[SingleNoteMatchStatement], None]] = None,
-        on_chord_matched: Optional[Callable[[ChordMatchStatement], None]] = None,
+        on_chord_matched: Optional[Callable[[ChordEvaluationStatement], None]] = None,
         on_chord_pitch_update: Optional[Callable[[Set[int], float], None]] = None,
-    ) -> None:
-        self._pitch_detector = pitch_detector
-        self._settings = settings or TrainerSettings()
+    ):
+        self.settings = settings or TrainerSettings()
+        self.note_evaluator = NoteEvaluator()
+        self.chord_evaluator = ChordEvaluator()
 
-        self._on_pitch_update = on_pitch_update
-        self._on_note_matched = on_note_matched
-        self._on_chord_matched = on_chord_matched
-        self._on_chord_pitch_update = on_chord_pitch_update
+        self.on_pitch_update = on_pitch_update
+        self.on_note_matched = on_note_matched
+        self.on_chord_matched = on_chord_matched
+        self.on_chord_pitch_update = on_chord_pitch_update
 
-        self.note_evaluator = NoteEvaluator(
-            tolerance_cents=self._settings.audio_settings.tolerance_cents,
-            min_volume_db=self._settings.audio_settings.min_volume_db,
-            hold_duration_sec=self._settings.audio_settings.hold_duration_sec,
-        )
-
-        self.chord_evaluator = ChordEvaluator(
-            hold_duration_sec=self._settings.audio_settings.hold_duration_sec,
-            validation_mode=self._settings.validation_mode,
-        )
-
-        # 1.8s accumulator window for clean strum capture without note hanging
-        self.arpeggio_buffer = ArpeggioBuffer(
-            window_duration_sec=self._settings.audio_settings.arpeggio_window_sec
-        )
-
-        self.chord_detector = ChordDetector(
-            sample_rate=self._settings.audio_settings.sample_rate,
-            silence_threshold_db=self._settings.audio_settings.min_volume_db
-        )
-
-        self._lock = threading.Lock()
-        self._running_event = threading.Event()
-        self._pause_event = threading.Event()
-        self._pause_event.set()
-
-        self._worker_thread: Optional[threading.Thread] = None
-
-    def set_input_device(self, device_id: Optional[int]) -> None:
-        if hasattr(self._pitch_detector, "set_device"):
-            self._pitch_detector.set_device(device_id)
-
-    def set_target_note(self, note_name: str, octave: Optional[int] = None) -> None:
-        with self._lock:
-            self.note_evaluator.set_target(note_name, octave)
-
-    def set_target_chord(self, target_chord: TargetChord) -> None:
-        with self._lock:
-            self.chord_evaluator.set_target(target_chord)
-            self.arpeggio_buffer.clear()
-
-    def update_settings(self, new_settings: TrainerSettings) -> None:
-        with self._lock:
-            self._settings = new_settings
-            self.note_evaluator.tolerance_cents = new_settings.audio_settings.tolerance_cents
-            self.note_evaluator.min_volume_db = new_settings.audio_settings.min_volume_db
-            self.note_evaluator.hold_duration_sec = new_settings.audio_settings.hold_duration_sec
-
-            self.chord_evaluator.hold_duration_sec = new_settings.audio_settings.hold_duration_sec
-            self.chord_evaluator.set_validation_mode(new_settings.validation_mode)
-
-            self.arpeggio_buffer.set_window_duration(new_settings.audio_settings.arpeggio_window_sec)
-            self.chord_detector.silence_threshold_db = new_settings.audio_settings.min_volume_db
+        self._is_running = False
+        self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        with self._lock:
-            if self._running_event.is_set():
-                return
-            self._running_event.set()
-            self._pause_event.set()
-            self._worker_thread = threading.Thread(
-                target=self._processing_loop,
-                name="AudioWorkerThread",
-                daemon=True,
-            )
-            self._worker_thread.start()
+        if self._is_running:
+            return
+        self._is_running = True
+        self._thread = threading.Thread(target=self._processing_loop, name="AudioWorkerThread", daemon=True)
+        self._thread.start()
 
     def stop(self) -> None:
-        with self._lock:
-            if not self._running_event.is_set():
-                return
-            self._running_event.clear()
-            self._pause_event.set()
+        self._is_running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=0.5)
 
-        if self._worker_thread and self._worker_thread.is_alive():
-            self._worker_thread.join(timeout=2.0)
+    def update_settings(self, new_settings: TrainerSettings) -> None:
+        self.settings = new_settings
+        val_mode = getattr(new_settings, "validation_mode", None)
+        if val_mode and hasattr(self.chord_evaluator, "set_validation_mode"):
+            self.chord_evaluator.set_validation_mode(val_mode)
+
+    def set_input_device(self, device_id: Optional[int]) -> None:
+        am = AudioManager.get_instance()
+        am.start_listening(device_id)
+
+    def set_target_note(self, note_name: str, octave: int = 4) -> None:
+        if hasattr(self.note_evaluator, "set_target_note"):
+            self.note_evaluator.set_target_note(note_name, octave)
+
+    def set_target_chord(self, chord: object) -> None:
+        if hasattr(self.chord_evaluator, "set_target"):
+            self.chord_evaluator.set_target(chord)
 
     def _processing_loop(self) -> None:
-        while self._running_event.is_set():
-            self._pause_event.wait()
-            if not self._running_event.is_set():
-                break
+        while self._is_running:
+            try:
+                if self.settings.detection_mode == DetectionMode.NOTE_DETECTION:
+                    self._process_note_mode()
+                else:
+                    self._process_chord_mode()
+            except Exception as err:
+                print(f"[AudioWorker] Frame processing error: {err}")
 
-            if self._settings.detection_mode == DetectionMode.NOTE_DETECTION:
-                self._process_note_mode()
-            else:
-                self._process_chord_mode()
-
-            time.sleep(0.015)
+            time.sleep(0.03)
 
     def _process_note_mode(self) -> None:
-        from services.audio_manager import AudioManager
         am = AudioManager.get_instance()
-        pdata = am.current_state.get("pitch_data")
-        if pdata is None:
-            return
+        state = getattr(am, "current_state", {})
+        pdata = state.get("pitch_data", {})
 
-        pitch_payload, match_statement = self.note_evaluator.evaluate_frame(
-            frequency=pdata.frequency,
-            cents=pdata.cents,
-            volume_db=pdata.db_level,
-            detected_note=pdata.note_name,
-            octave=pdata.octave
+        if isinstance(pdata, dict):
+            freq = pdata.get("frequency", pdata.get("pitch", 0.0))
+            vol_db = pdata.get("volume_db", state.get("volume_db", -80.0))
+            is_silent = pdata.get("is_silent", state.get("is_silent", True))
+            cents = pdata.get("cents", 0.0)
+            note_name = pdata.get("note_name", "")
+        else:
+            freq = getattr(pdata, "frequency", getattr(pdata, "pitch", 0.0))
+            vol_db = getattr(pdata, "volume_db", -80.0)
+            is_silent = getattr(pdata, "is_silent", True)
+            cents = getattr(pdata, "cents", 0.0)
+            note_name = getattr(pdata, "note_name", "")
+
+        target_note = getattr(self.note_evaluator, "target_note", "").strip().upper()
+        detected_clean = note_name.strip().upper()
+
+        # Clean digits from note string (e.g. convert "E4" -> "E") for note-only target matching
+        detected_note_only = "".join([c for c in detected_clean if not c.isdigit()])
+
+        is_note_match = (
+            not is_silent
+            and len(detected_note_only) > 0
+            and (detected_note_only == target_note)
         )
 
-        if self._on_pitch_update:
-            try:
-                self._on_pitch_update(pitch_payload)
-            except Exception as err:
-                sys.stderr.write(f"[AudioWorker] Pitch update error: {err}\n")
+        is_in_tune = is_note_match and (abs(cents) <= 30.0 or cents == 0.0)
 
-        if match_statement and match_statement.is_correct and self._on_note_matched:
-            try:
-                self._on_note_matched(match_statement)
-            except Exception as err:
-                sys.stderr.write(f"[AudioWorker] Note match callback error: {err}\n")
+        payload = EvaluatedPitchPayload(
+            frequency_hz=freq,
+            cents_deviation=cents,
+            cents=cents,
+            volume_db=vol_db,
+            is_silent=is_silent,
+            raw_pitch_str=note_name,
+            is_in_tune=is_in_tune,
+        )
+
+        if self.on_pitch_update:
+            self.on_pitch_update(payload)
+
+        if is_in_tune and self.on_note_matched:
+            statement = SingleNoteMatchStatement(
+                is_correct=True,
+                target_note=target_note,
+                detected_note=note_name,
+                cents_error=cents,
+            )
+            self.on_note_matched(statement)
 
     def _process_chord_mode(self) -> None:
-        from services.audio_manager import AudioManager
         am = AudioManager.get_instance()
-        pdata = am.current_state.get("pitch_data")
-        if pdata is None or pdata.raw_signal is None:
-            return
+        state = getattr(am, "current_state", {})
+        vol_db = state.get("volume_db", -80.0)
+        pdata = state.get("pitch_data", {})
 
-        vol_db = pdata.db_level
-        min_vol = self._settings.audio_settings.min_volume_db
+        pcs: Set[int] = set()
+        if isinstance(pdata, dict):
+            pc_val = pdata.get("pitch_class")
+            if pc_val is not None:
+                pcs.add(int(pc_val) % 12)
+        elif hasattr(pdata, "pitch_class"):
+            pcs.add(getattr(pdata, "pitch_class") % 12)
 
-        detected_pcs: Set[int] = set()
+        if self.on_chord_pitch_update:
+            self.on_chord_pitch_update(pcs, vol_db)
 
-        if self._settings.validation_mode == ValidationMode.ARPEGGIO_SEQUENCE:
-            if vol_db >= min_vol and pdata.note_name != "N/A":
-                pc = NOTE_TO_PITCH_INDEX.get(pdata.note_name.upper())
-                if pc is not None:
-                    self.arpeggio_buffer.add_pitch_class(pc)
-            detected_pcs = self.arpeggio_buffer.get_active_pitch_classes()
-        else:
-            active_pcs, _, is_silent, _ = self.chord_detector.process_frame(pdata.raw_signal)
-            if not is_silent and vol_db >= min_vol:
-                detected_pcs = active_pcs
-
-        if self._on_chord_pitch_update:
-            try:
-                self._on_chord_pitch_update(detected_pcs, vol_db)
-            except Exception as err:
-                sys.stderr.write(f"[AudioWorker] Chord pitch update error: {err}\n")
-
-        is_valid, chord_statement = self.chord_evaluator.evaluate_pitch_classes(
-            detected_pitch_classes=detected_pcs,
-            volume_db=vol_db,
-            min_volume_db=min_vol
-        )
-
-        # Trigger success instantly and reset buffer for next chord
-        if chord_statement and chord_statement.is_correct:
-            self.arpeggio_buffer.clear()
-            if self._on_chord_matched:
-                try:
-                    self._on_chord_matched(chord_statement)
-                except Exception as err:
-                    sys.stderr.write(f"[AudioWorker] Chord match callback error: {err}\n")
+        is_valid, statement = self.chord_evaluator.evaluate_pitch_classes(pcs, volume_db=vol_db)
+        if is_valid and statement is not None and statement.is_correct:
+            if self.on_chord_matched:
+                self.on_chord_matched(statement)

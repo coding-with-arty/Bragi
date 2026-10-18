@@ -9,6 +9,17 @@ from instruments.guitar import GuitarProfile
 from instruments.bass import BassProfile
 from instruments.ukulele import UkuleleProfile
 from hints.fretboard_mapper import FretboardMapper
+from engine.scale_engine import ScaleDefinition, ScaleType, ScaleSequencer
+
+# Test C Major Scale
+c_major = ScaleDefinition("C", ScaleType.MAJOR)
+assert c_major.get_note_names() == ["C", "D", "E", "F", "G", "A", "B"]
+
+# Test Step Sequencer
+seq = ScaleSequencer(c_major, ascending=True)
+assert seq.current_target_note_name == "C"
+assert seq.evaluate_note(0) is True  # C matched
+assert seq.current_target_note_name == "D"
 
 
 def test_guitar_note_coordinates():
