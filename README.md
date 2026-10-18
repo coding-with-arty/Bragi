@@ -1,96 +1,102 @@
-# Bragi — Fretboard & Ear Training Suite
+# Bragi — Fretboard, Tuner & Ear Training Suite
 
-**Bragi** is a cross-platform desktop application designed for musicians, students, and guitarists seeking to master fretboard navigation, pitch class recognition, and ear training. Powered by a real-time Digital Signal Processing (DSP) engine and a responsive UI built on **Flet**, Bragi provides instant visual feedback for single-note picking, strummed dual-chord recognition, multi-instrument tuning configurations, and comprehensive gamification analytics.
+**Bragi** is a cross-platform desktop application designed for musicians, guitarists, and bassists seeking to master fretboard navigation, pitch recognition, instrument tuning, and ear training. Powered by a low-latency Digital Signal Processing (DSP) engine and a responsive UI built on **Flet**, Bragi provides real-time visual feedback for single-note picking, chromatic tuning, 11-chord quality arpeggiation, multi-instrument setups, and multi-user analytics tracking.
 
 ---
 
 ## Key Features
 
-### 🎸 Real-Time Pitch & Chord Detection
+### 🎸 Real-Time Pitch, Tuner & Polyphonic Chord Detection
 
-- **Acoustic Microphone Recognition**: Listens to live instrument input via microphone and extracts pitch classes ($C, C\sharp, D, \dots, B$) in real time.
-- **Dual-Chord & Strum Recognition**: Utilizes global magnitude scaling, harmonic overtone filtering, and top-peak spectral extraction to identify chord qualities (Major, Minor, Dominant 7th) and multi-note strums.
-- **Interactive Fretboard Visualization**: Highlights detected pitch classes live across an adjustable fretboard grid complete with fret landmarks ($3, 5, 7, 9, 12, 15, 17, 19, 21, 24$).
+- **Real-Time Chromatic Instrument Tuner**:
+  - Features an asynchronous main-thread polling loop (~25 FPS) rendering needle gauge indicators, frequency readouts (Hz), and cents deviation error.
+  - Visual status alerts highlight in-tune notes within a $\pm 5\text{ cents}$ threshold.
+- **Low-Frequency Guitar & Bass Pickup Optimization**:
+  - Processed using an expanded 4096-sample buffer window combined with software peak normalization to capture low pitch frequencies down to $30\text{ Hz}$ (supporting 4-string and 5-string bass low B).
+  - Adaptive silence gating ($-52\text{ dBFS}$) captures soft string picks without requiring gain increases that cause hardware microphone clipping.
+- **11 Chord Qualities & Arpeggio Accumulator**:
+  - Detects triads and 4-note 7th chords (Major, Minor, Dominant 7th, Major 7th, Minor 7th, Diminished, Half-Diminished, Augmented, Suspended) across a $2.5\text{s}$ sliding arpeggio time window.
+  - Utilizes essential-tone matching rules to validate complex chords even when string intervals are played as arpeggios or intermediate tones decay.
+- **Interactive Fretboard Grid**:
+  - Displays recognized pitch classes ($C, C\sharp, D, \dots, B$) live on an interactive fretboard with standard fret markers ($3, 5, 7, 9, 12, 15, 17, 19, 21, 24$).
 
 ---
 
 ### 🛠️ Multi-Instrument Support & Custom Builder
 
-- **Preset Instrument Profiles**: Native support for Standard Guitar (6-string), 7-String, 8-String, Bass Guitar (4/5/6 string), Ukulele, Mandolin, and Banjo.
-- **Custom Instrument Builder Dialog**: Interactively build custom stringed instruments from 1 to 10 strings with custom pitch assignments.
-- **Streamlined Tuning Sidebar**: Beginners can adjust per-string tunings by selecting note pitch classes alone (`E`, `A`, `D`, `G`, `B`, `E` or `D`, `A`, `D`, `G`, `B`, `E`) while underlying octave frequencies are automatically calculated and preserved.
-- **Persistent Profiles**: Saved custom instruments and custom tunings are stored in `custom_instruments.json` for seamless recall across sessions.
+- **Preset Instrument Profiles**: Built-in support for Standard 6-String Guitar, 7-String, 8-String, Bass Guitar (4/5/6 string), Ukulele, Mandolin, and Banjo.
+- **Custom Instrument Builder**: Interactively configure custom instruments from 1 to 10 strings with custom pitch assignments.
+- **Streamlined Tuning Sidebar**: Adjust string tuning by picking note names while octave boundaries are automatically calculated and preserved.
+- **Persistent Profiles**: Custom instruments and tunings save automatically to `custom_instruments.json`.
 
 ---
 
 ### 👂 Acoustic Ear Training Suite
 
-- **Interactive Exercises**: Four dedicated training modes:
-
-1. **Single Pitch Identification**
-2. **Interval Recognition**
-3. **Chord Quality Identification** (Major, Minor, Dominant 7th)
-4. **Inversion Trainer**
-
-- **Acoustic String Synthesis Engine**: Built-in Karplus-Strong style acoustic synthesizer (`AudioSynth`) plays realistic pluck sounds for training feedback without requiring external sample packs.
-- **Customizable Difficulty**: Toggle accidentals, octave ranges, and chord complexity directly from the settings bar.
+- **4 Interactive Training Modes**:
+  1. Single Pitch Identification
+  2. Interval Recognition
+  3. Chord Quality Identification (Major, Minor, Dominant 7th)
+  4. Inversion Trainer
+- **Built-in Synthesis (`AudioSynth`)**: Karplus-Strong style string synthesis generates realistic acoustic plucks without external audio sample libraries.
+- **Custom Difficulty**: Control accidentals, octave ranges, and chord difficulty from the configuration panel.
 
 ---
 
-### 📊 Analytics & Gamification Hub
+### 📊 Multi-User Analytics & Gamification
 
-- **Level Progression & XP**: Earn experience points for every correct pitch recognized and ear training challenge completed.
-- **Daily Practice Streaks**: Automatically tracks consecutive practice days and personal best records.
-- **12-Note Chromatic Mastery Tiers**: Evaluates accuracy across all 12 pitch classes, ranking note recognition from **Bronze**, **Silver**, and **Gold** up to **Platinum** (90%+ accuracy).
-- **Daily Quests & Challenges**: Progress bars track real-time completion of daily quests with bonus XP rewards.
-- **Category Badge Filtering**: Unlocked achievement badges filterable by category (_Trainer_, _Ear Training_, _Streaks_).
-
----
-
-### 🎨 Responsive UI, Branding & User Assistance
-
-- **Responsive Layout Shell**: Automatically adapts layout across desktop, tablet, and mobile breakpoints using side rails or bottom navigation bars.
-- **Custom Window & Asset Branding**: Integrated `logo.ico` window application icon and full-bleed `bg.png` cover background with theme-adaptive translucency scrims.
-- **Integrated User Guide (`?`)**: Floating top-right question mark button opens a modal guide (`HelpDialog`) detailing app navigation, tuning tips, ear training rules, and analytics tracking.
+- **Multi-User Profile System**: Switch between user profiles with automated database schema migration handling column initialization (`user_id`).
+- **XP Progression & Leveling**: Earn experience points for correct notes, held tuning accuracy, and completed ear training rounds.
+- **Practice Streaks & Mastery Tiers**: Track daily streaks and view note accuracy ranked from Bronze, Silver, Gold, to Platinum (90%+ accuracy).
+- **Daily Quests & Achievement Badges**: Complete daily practice goals and unlock filterable achievement badges.
 
 ---
 
 ## Tech Stack & Frameworks
 
-| Subsystem                    | Technologies / Packages Used                                                     |
-| ---------------------------- | -------------------------------------------------------------------------------- |
-| **Language**                 | Python 3.10+                                                                     |
-| **UI Framework**             | [Flet](https://flet.dev/) (Flutter-backed UI framework for Python)               |
-| **Signal Processing & Math** | NumPy, SciPy (FFT analysis, peak detection, spectral filtering)                  |
-| **Audio Input / Capture**    | SoundDevice / PyAudio (real-time microphone PCM streaming)                       |
-| **Audio Synthesis**          | Native PCM Wave Generator (`AudioSynth` acoustic pluck synthesizer)              |
-| **Data Persistence**         | SQLite3 (Progress repository & user analytics), JSON (`custom_instruments.json`) |
+| Subsystem | Technologies / Frameworks Used |
+| :--- | :--- |
+| **Language** | Python 3.10+ |
+| **UI Framework** | [Flet](https://flet.dev/) (Flutter engine for Python) |
+| **DSP Signal Processing** | NumPy, SciPy (FFT Autocorrelation, Parabolic Interpolation, Windowing) |
+| **Audio I/O** | SoundDevice / PortAudio (Real-time PCM stream capture) |
+| **Audio Synthesis** | Native PCM Wave Generator (`AudioSynth` acoustic synthesizer) |
+| **Data Persistence** | SQLite3 (`bragi_progress.db` with dynamic schema migrations), JSON |
+| **Packaging** | PyInstaller (`bragi.spec` executable build configuration) |
 
 ---
 
 ## Project Structure
 
+
 ```
+
 Bragi/
-├── main.py                          # Main entry point & window asset routing
-├── requirements.txt                 # Python package dependencies
-├── assets/                          # Static assets directory
-│   ├── logo.ico                     # Window branding icon
-│   └── bg.png                       # Application background wallpaper
+├── main.py                          # Application entry point
+├── bragi.spec                       # PyInstaller packaging configuration
+├── requirements.txt                 # Dependencies
+├── assets/                          # App icon and background graphics
 └── src/
-    ├── app_layout.py                # Shell container, stack layering, navigation & help trigger
-    ├── models/                      # Domain data models (InstrumentProfile, StringConfig)
-    ├── storage/                     # SQLite progress repo & JSON instrument store
-    ├── utils/                       # Music theory helpers, theme manager & responsive layouts
-    └── views/                       # Application view layers
-        ├── trainer_view.py          # Main live fretboard & pitch detection view
-        ├── components/              # Reusable UI widgets
-        │   ├── tuning_panel.py      # Note-only sidebar tuning control
-        │   ├── custom_instrument_dialog.py # Custom 1-10 string instrument builder
-        │   └── help_dialog.py       # Modal user guide and instructions
-        └── subviews/                # Tab subviews
-            ├── ear_training_view.py # Ear training exercise engine
-            └── progress_view.py     # Analytics & gamification dashboard
+├── app_layout.py                # Main shell container & tab router
+├── audio/
+│   └── audio_worker.py          # Background pitch accumulation worker
+├── engine/
+│   ├── chord_evaluator.py       # Triad & 7th chord essential-tone matching
+│   └── chord_generator.py       # Chord theory definitions
+├── models/                      # Instrument and user profile models
+├── services/
+│   └── audio_manager.py         # Hardware microphone stream & DSP pitch engine
+├── storage/
+│   ├── path_utils.py            # App data directory resolution
+│   └── progress_repository.py   # SQLite database & dynamic migration logic
+├── utils/                       # Music theory calculations & theme management
+└── views/
+├── trainer_view.py          # Interactive fretboard & pitch practice view
+├── components/              # Dialogs, tuning sidebar & audio settings
+└── subviews/
+├── tuner_view.py        # Real-time chromatic tuner view (~25 FPS polling)
+├── ear_training_view.py # Ear training exercise engine
+└── progress_view.py     # Analytics & profile progress dashboard
 
 ```
 
@@ -100,24 +106,24 @@ Bragi/
 
 ### Prerequisites
 
-- **Python 3.10** or higher installed on your system.
-- Working microphone / audio input hardware.
+* **Python 3.10** or higher.
+* Working microphone or instrument audio interface input.
 
 ---
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YourUsername/Bragi.git
+git clone [https://github.com/YourUsername/Bragi.git](https://github.com/YourUsername/Bragi.git)
 cd Bragi
 
 ```
 
 ---
 
-### 2. Create and Activate a Virtual Environment
+### 2. Set Up Virtual Environment
 
-#### On Windows (PowerShell):
+#### Windows (PowerShell):
 
 ```powershell
 python -m venv venv
@@ -125,7 +131,7 @@ python -m venv venv
 
 ```
 
-#### On macOS / Linux:
+#### macOS / Linux:
 
 ```bash
 python3 -m venv venv
@@ -143,27 +149,30 @@ pip install -r requirements.txt
 
 ```
 
-> **Note for Linux Users**: Ensure `portaudio19-dev` is installed on your system if `sounddevice` compilation is required (`sudo apt install portaudio19-dev`).
+> **Note for Linux Users**: Ensure `portaudio19-dev` is installed prior to running pip (`sudo apt install portaudio19-dev`).
 
 ---
 
 ### 4. Run the Application
 
 ```bash
-python main.py
+python src/main.py
 
 ```
 
 ---
 
-## Usage Quick Start
+## Packaging Executable (PyInstaller)
 
-1. **Start Live Pitch Detection**: Navigate to the **Trainer** tab, select your instrument profile from the header, and click **"Start Listening"**. Grant microphone permissions if prompted.
-2. **Tune Your Instrument**: Tweak per-string note pitches in the **Custom Tuning** sidebar on the left.
-3. **Build a Custom Instrument**: Click the **`+`** icon in the instrument picker header to configure an instrument with 1–10 strings.
-4. **Practice Ear Training**: Switch to the **Ear Training** tab, select an exercise mode (_Single Note_, _Interval_, _Chord Quality_, or _Inversion_), click **"Play Sound"**, and choose your answer.
-5. **View Your Stats**: Switch to the **Analytics** tab to track your XP, daily practice streaks, 12-note chromatic mastery levels, and achievement badges.
-6. **Need Directions?**: Click the floating **`?`** button in the top right corner at any time to open the in-app user guide.
+To build a standalone executable for distribution:
+
+```bash
+pip install pyinstaller
+pyinstaller bragi.spec
+
+```
+
+The compiled output binary will be generated inside the `dist/` directory.
 
 ---
 
@@ -192,4 +201,3 @@ TERMS OF USE (BETA TESTING PHASE):
 
 For permissions or inquiries regarding commercial licensing, contact Arthur Belanger.
 
-```
